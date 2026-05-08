@@ -32,7 +32,7 @@ def _build_generate_prompt(session_context: dict) -> str:
         for f in METADATA_FIELDS
     )
     lines = [
-        "You are a library metadata specialist analysing a photograph for a digital archive.",
+        "Analyze a photo.",
         "",
     ]
     if ctx.get("collection_name"):
@@ -203,7 +203,7 @@ def _qwen_infer(image_path: str, text_prompt: str) -> str:
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
-        output_ids = model.generate(**inputs, max_new_tokens=1024)
+        output_ids = model.generate(**inputs, max_new_tokens=1024, temperature=0, do_sample=False)
     # Decode only the new tokens
     generated = output_ids[:, inputs["input_ids"].shape[1]:]
     result = processor.batch_decode(generated, skip_special_tokens=True)[0]
@@ -249,6 +249,7 @@ def _ollama_infer(image_path: str, text_prompt: str) -> str:
         "prompt": text_prompt,
         "images": [b64],
         "stream": False,
+        "options": {"temperature": 0},
     }).encode()
 
     headers = {"Content-Type": "application/json"}
@@ -260,7 +261,7 @@ def _ollama_infer(image_path: str, text_prompt: str) -> str:
         data=payload,
         headers=headers,
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=600) as resp:
         data = json.loads(resp.read())
     return data.get("response", "")
 
@@ -297,6 +298,7 @@ def _claude_infer(image_path: str, text_prompt: str) -> str:
     message = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
+        temperature=0,
         messages=[
             {
                 "role": "user",
