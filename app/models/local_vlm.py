@@ -216,7 +216,12 @@ def _ollama_infer(image_path: str, text_prompt: str) -> str:
     import base64
     import urllib.request
 
-    from app.config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TOKEN, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY
+    import os
+    from pathlib import Path
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=False)
+    from app.config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY
+    OLLAMA_TOKEN = os.getenv("OLLAMA_TOKEN", "")
     from PIL import Image as PILImage, ImageOps
     import io
 

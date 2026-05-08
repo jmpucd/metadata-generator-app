@@ -2,6 +2,10 @@
 streamlit_app.py — entry point.
 Run with: streamlit run streamlit_app.py
 """
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
 import streamlit as st
 from app.config import PAGE_TITLE, PAGE_ICON
 from app.db.schema import create_tables
