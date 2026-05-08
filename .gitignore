@@ -1,0 +1,23 @@
+# Secrets — never commit
+.env
+
+# Virtual environment
+.venv/
+
+# Database and generated data
+data/
+
+# Images (originals stay on server, not in git)
+images/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# PDF session logs
+*.pdf
+
+# Editor/OS
+.DS_Store
+*.swp
