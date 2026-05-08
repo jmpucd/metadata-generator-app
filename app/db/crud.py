@@ -103,6 +103,8 @@ def upsert_metadata(db: Session, image_id: int, fields: dict) -> MetadataRecord:
                 value = json.dumps(value)
             setattr(rec, key, value)
         elif hasattr(rec, key):
+            if isinstance(value, list):
+                value = ", ".join(str(v) for v in value) if value else ""
             setattr(rec, key, value)
 
     rec.last_revised_at = datetime.datetime.utcnow()

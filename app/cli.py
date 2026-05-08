@@ -144,6 +144,7 @@ def generate(
                 mark_draft_generated(db, img.id)
                 snapshot_revision(db, img.id, "draft")
             except Exception as e:
+                db.rollback()
                 rprint(f"[red]  ✗ {img.filename}: {e}[/red]")
                 errors += 1
             progress.advance(task)
