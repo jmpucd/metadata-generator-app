@@ -11,7 +11,7 @@ from app.config import EXPORTS_DIR
 
 create_tables()
 
-st.header("📤 Export")
+st.header("Export")
 
 db = get_session()
 collections = list_collections(db)
@@ -40,8 +40,7 @@ if approved_count == 0:
     st.info("No approved records to export yet. Approve records in the Review tab.")
     st.stop()
 
-st.divider()
-st.subheader("Export format")
+st.markdown('<span class="section-label">Export Format</span>', unsafe_allow_html=True)
 
 fmt = st.radio("Format", ["JSON", "CSV", "XMP sidecars"], horizontal=True)
 
@@ -50,7 +49,7 @@ custom_path = st.text_input(
     placeholder=str(EXPORTS_DIR / "approved_metadata.json"),
 )
 
-if st.button(f"⬇️ Export {approved_count} approved records as {fmt}", type="primary"):
+if st.button(f"Export {approved_count} approved records as {fmt}", type="primary"):
     records = get_approved_records(db, collection_id=col_id)
     out_path = Path(custom_path) if custom_path.strip() else None
 
@@ -58,13 +57,13 @@ if st.button(f"⬇️ Export {approved_count} approved records as {fmt}", type="
         try:
             if fmt == "JSON":
                 result = export_json(records, out_path)
-                st.success(f"✅ Exported to `{result}`")
+                st.success(f"Exported to `{result}`")
             elif fmt == "CSV":
                 result = export_csv(records, out_path)
-                st.success(f"✅ Exported to `{result}`")
+                st.success(f"Exported to `{result}`")
             elif fmt == "XMP sidecars":
                 out_dir = Path(custom_path) if custom_path.strip() else None
                 written = export_xmp(records, out_dir)
-                st.success(f"✅ Wrote {len(written)} XMP sidecar files to `{written[0].parent}`")
+                st.success(f"Wrote {len(written)} XMP sidecar files to `{written[0].parent}`")
         except Exception as e:
             st.error(f"Export failed: {e}")

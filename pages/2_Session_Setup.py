@@ -11,7 +11,7 @@ from app.db.crud import (
 
 create_tables()
 
-st.header("⚙️ Session Setup")
+st.header("Session Setup")
 st.caption("Define the parameters that guide the local model's metadata generation.")
 
 db = get_session()
@@ -36,7 +36,7 @@ existing = next((c for c in collections if c.name == col_name), None)
 ev = lambda field, default="": getattr(existing, field, None) or default
 
 with st.form("session_form"):
-    st.subheader("Collection details")
+    st.markdown('<span class="section-label">Collection Details</span>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         description_style = st.text_area(
@@ -70,7 +70,7 @@ with st.form("session_form"):
             height=80,
         )
 
-    st.subheader("Rules & constraints")
+    st.markdown('<span class="section-label">Rules &amp; Constraints</span>', unsafe_allow_html=True)
     c3, c4 = st.columns(2)
     with c3:
         terms_to_avoid = st.text_area(
@@ -93,7 +93,7 @@ with st.form("session_form"):
             height=100,
         )
 
-    submitted = st.form_submit_button("💾 Save collection settings", type="primary")
+    submitted = st.form_submit_button("Save collection settings", type="primary")
 
 if submitted:
     if not col_name:
@@ -111,10 +111,10 @@ if submitted:
         )
         if existing and mode == "Edit existing":
             update_collection(db, existing.id, **kwargs)
-            st.success(f"✅ Updated collection: **{col_name}**")
+            st.success(f"Updated collection: **{col_name}**")
         else:
             get_or_create_collection(db, col_name, **kwargs)
-            st.success(f"✅ Created collection: **{col_name}**")
+            st.success(f"Created collection: **{col_name}**")
 
 # ── Show existing collections ─────────────────────────────────────────────────
 if collections:

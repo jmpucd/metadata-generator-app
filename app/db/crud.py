@@ -97,7 +97,11 @@ def upsert_metadata(db: Session, image_id: int, fields: dict) -> MetadataRecord:
         db.add(rec)
 
     tag_fields = {"subjects", "people", "places", "objects"}
+    skip_fields = {"id", "image_id", "review_status", "draft_generated",
+                   "last_revised_at", "approved_at", "approved_by"}
     for key, value in fields.items():
+        if key in skip_fields:
+            continue
         if key in tag_fields:
             if isinstance(value, list):
                 value = json.dumps(value)

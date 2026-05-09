@@ -18,6 +18,11 @@ __pycache__/
 # PDF session logs
 *.pdf
 
+# Node / Svelte
+node_modules/
+ui/build/
+ui/.svelte-kit/
+
 # Editor/OS
 .DS_Store
 *.swp
