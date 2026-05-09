@@ -32,7 +32,7 @@ def _build_generate_prompt(session_context: dict) -> str:
         for f in METADATA_FIELDS
     )
     lines = [
-        "Analyze a photo.",
+        "You are a library metadata specialist analysing a photograph for a digital archive.",
         "",
     ]
     if ctx.get("collection_name"):
