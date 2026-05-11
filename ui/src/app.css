@@ -7,19 +7,16 @@
 	--c-viewer-bg:     #FAFAFA;
 	--c-sidebar-bg:    #F7F7F5;
 
-	/* Near-black ink — strong typographic contrast on cool ground */
 	--c-text:          #141310;
 	--c-text-body:     #1A1916;
 
-	/* Cool blue-gray tonal range */
-	--c-muted:         #6C7D8B;
-	--c-ghost:         #9AAAB6;
-	--c-ghost-lt:      #BCCAD4;
-	--c-border:        #C9D7E0;
-	--c-border-subtle: #D6E2E9;
+	--c-muted:         #6B6B6B;
+	--c-ghost:         #9A9A9A;
+	--c-ghost-lt:      #BFBFBF;
+	--c-border:        #D0D0D0;
+	--c-border-subtle: #E0E0E0;
 
-	/* Royal/cobalt blue — structural lines only: register rules, dividers, focus, indexing */
-	--c-accent:        #2050A8;
+	--c-accent:        #141310;
 
 	--sidebar-w: 180px;
 	--panel-w:   340px;
@@ -203,9 +200,9 @@ textarea, input { font-family: inherit; }
 .anno-label {
 	display: block;
 	font-family: var(--font-mono);
-	font-size: 0.44rem;
+	font-size: 0.58rem;
 	font-weight: 400;
-	letter-spacing: 0.24em;
+	letter-spacing: 0.2em;
 	text-transform: uppercase;
 	color: var(--c-accent);
 	margin-top: 1.25rem;

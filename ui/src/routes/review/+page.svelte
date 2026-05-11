@@ -2,16 +2,19 @@
 	import { app } from '$lib/state.svelte';
 	import {
 		getImages, getMetadata, putMetadata, setStatus, revise,
-		imageFileUrl, getStats,
+		imageFileUrl, getStats, getConfig,
 	} from '$lib/api';
 	import type { MetadataRecord } from '$lib/types';
 
 	type Mode = 'study' | 'cataloging';
 
+	type Zoom = 'fit' | '100' | '200';
+
 	let mode           = $state<Mode>('cataloging');
 	let panelOpen      = $state(true);
 	let reviseFeedback = $state('');
 	let loadingImage   = $state(false);
+	let zoom           = $state<Zoom>('fit');
 
 	let title          = $state('');
 	let description    = $state('');
@@ -24,6 +27,7 @@
 	let uncertainty    = $state('');
 	let reviewerNotes  = $state('');
 	let dirty          = $state(false);
+	let modelLabel     = $state('');
 
 	$effect(() => {
 		const colId  = app.selectedCollectionId;
@@ -42,6 +46,8 @@
 		if (!img) return;
 		loadMeta(img.id);
 	});
+
+	getConfig().then(c => { modelLabel = c.model; }).catch(() => {});
 
 	async function loadMeta(imageId: number) {
 		loadingImage = true;
@@ -104,9 +110,14 @@
 		}
 	}
 
+	const ZOOM_LEVELS: Zoom[] = ['fit', '100', '200'];
+	function zoomIn()  { const i = ZOOM_LEVELS.indexOf(zoom); if (i < ZOOM_LEVELS.length - 1) zoom = ZOOM_LEVELS[i + 1]; }
+	function zoomOut() { const i = ZOOM_LEVELS.indexOf(zoom); if (i > 0) zoom = ZOOM_LEVELS[i - 1]; }
+
 	function go(delta: number) {
 		const next = app.currentIndex + delta;
 		if (next < 0 || next >= app.total) return;
+		zoom = 'fit';
 		app.currentIndex = next;
 	}
 
@@ -164,17 +175,23 @@
 			case 's': save();                          break;
 			case 'm': mode = mode === 'study' ? 'cataloging' : 'study'; break;
 			case 'p': panelOpen = !panelOpen;          break;
+			case '+':
+			case '=': zoomIn();                        break;
+			case '-': zoomOut();                       break;
 		}
 	}
 
-	function autosize(node: HTMLTextAreaElement) {
+	function autosize(node: HTMLTextAreaElement, _val?: unknown) {
 		function resize() {
 			node.style.height = 'auto';
 			node.style.height = node.scrollHeight + 'px';
 		}
 		resize();
 		node.addEventListener('input', resize);
-		return { destroy() { node.removeEventListener('input', resize); } };
+		return {
+			update() { resize(); },
+			destroy() { node.removeEventListener('input', resize); },
+		};
 	}
 
 	const STATUS_LABEL: Record<string, string> = {
@@ -218,7 +235,7 @@
 			</div>
 
 			<!-- image with inline navigation zones -->
-			<div class="image-frame">
+			<div class="image-frame" class:is-zoomed={zoom !== 'fit'}>
 				<button
 					class="nav-zone nav-prev"
 					onclick={() => go(-1)}
@@ -234,7 +251,8 @@
 					<img
 						src={imageFileUrl(app.currentImage.id)}
 						alt={app.currentMetadata?.title ?? app.currentImage.filename}
-						class="main-img"
+						class="main-img zoom-{zoom}"
+						onclick={() => zoom = zoom === 'fit' ? '100' : 'fit'}
 					/>
 				{/if}
 
@@ -266,7 +284,13 @@
 
 				<div class="nav-spacer"></div>
 
-				<span class="shortcut-hint">j/k · a · f · s · m · p</span>
+				<div class="zoom-btns">
+					<button class="zoom-btn" class:is-active={zoom === 'fit'}  onclick={() => zoom = 'fit'} >Fit</button>
+					<button class="zoom-btn" class:is-active={zoom === '100'}  onclick={() => zoom = '100'} >100%</button>
+					<button class="zoom-btn" class:is-active={zoom === '200'}  onclick={() => zoom = '200'} >200%</button>
+				</div>
+
+				<span class="shortcut-hint">j/k · a · f · s · m · p · +/-</span>
 
 				<div class="mode-toggle">
 					<button
@@ -311,19 +335,21 @@
 						<span class="section-head">Description</span>
 
 						<span class="anno-label">Title</span>
-						<input
+						<textarea
 							class="field-input title"
 							bind:value={title}
 							oninput={markDirty}
+							use:autosize={title}
 							placeholder="Untitled"
-						/>
+							rows="1"
+						></textarea>
 
 						<span class="anno-label">Description</span>
 						<textarea
 							class="field-textarea description"
 							bind:value={description}
 							oninput={markDirty}
-							use:autosize
+							use:autosize={description}
 							placeholder="—"
 						></textarea>
 					</div>
@@ -333,38 +359,40 @@
 						<span class="section-head">Classification</span>
 
 						<span class="anno-label">Subjects</span>
-						<input
+						<textarea
 							class="field-input field-entity"
 							bind:value={subjects}
 							oninput={markDirty}
+							use:autosize={subjects}
 							placeholder="comma-separated"
-						/>
+							rows="1"
+						></textarea>
 					</div>
 
 					<!-- ── Section: Documentary ── -->
 					<div class="section section-documentary">
-						<span class="section-head">Documentary</span>
+						<span class="section-head">Documentation</span>
 
 						<span class="anno-label">Visible text / OCR</span>
 						<textarea
 							class="field-textarea field-ocr"
 							bind:value={visibleText}
 							oninput={markDirty}
-							use:autosize
+							use:autosize={visibleText}
 							placeholder="—"
 						></textarea>
 
 						<span class="anno-label">People</span>
-						<input class="field-input field-entity" bind:value={people} oninput={markDirty} placeholder="—" />
+						<textarea class="field-input field-entity" bind:value={people}  oninput={markDirty} use:autosize={people}  placeholder="—" rows="1"></textarea>
 
 						<span class="anno-label">Places</span>
-						<input class="field-input field-entity" bind:value={places} oninput={markDirty} placeholder="—" />
+						<textarea class="field-input field-entity" bind:value={places}  oninput={markDirty} use:autosize={places}  placeholder="—" rows="1"></textarea>
 
 						<span class="anno-label">Dates</span>
-						<input class="field-input field-entity" bind:value={dates} oninput={markDirty} placeholder="—" />
+						<textarea class="field-input field-entity" bind:value={dates}   oninput={markDirty} use:autosize={dates}   placeholder="—" rows="1"></textarea>
 
 						<span class="anno-label">Objects</span>
-						<input class="field-input field-entity" bind:value={objects} oninput={markDirty} placeholder="—" />
+						<textarea class="field-input field-entity" bind:value={objects} oninput={markDirty} use:autosize={objects} placeholder="—" rows="1"></textarea>
 					</div>
 
 					<!-- ── Section: Notes ── -->
@@ -376,7 +404,7 @@
 							class="field-textarea"
 							bind:value={uncertainty}
 							oninput={markDirty}
-							use:autosize
+							use:autosize={uncertainty}
 							placeholder="—"
 						></textarea>
 
@@ -385,50 +413,51 @@
 							class="field-textarea"
 							bind:value={reviewerNotes}
 							oninput={markDirty}
-							use:autosize
+							use:autosize={reviewerNotes}
 							placeholder="—"
 						></textarea>
 					</div>
 
-					<!-- ── Section: Revision ── -->
-					<div class="section section-revision">
-						<details>
-							<summary><span class="revise-with">Revise with</span> <span class="revise-ai">AI</span></summary>
-							<select
-								class="revise-preset"
-								onchange={(e) => {
-									const val = (e.target as HTMLSelectElement).value;
-									if (val) reviseFeedback = val;
-									(e.target as HTMLSelectElement).value = '';
-								}}
-							>
-								<option value="">— quick presets —</option>
-								<option value="Make this description more neutral.">Make description more neutral</option>
-								<option value="Do not infer the event — describe only what is visible.">Describe only what is visible</option>
-								<option value="Use simpler, public-facing language.">Simpler public-facing language</option>
-								<option value="Remove any terms that are potentially offensive or outdated.">Remove offensive/outdated terms</option>
-								<option value="Expand the description with more visual detail.">Expand with more visual detail</option>
-								<option value="Shorten the description to two sentences.">Shorten to two sentences</option>
-							</select>
-							<textarea
-								class="field-textarea"
-								bind:value={reviseFeedback}
-								placeholder="Describe what to change…"
-								use:autosize
-								rows="3"
-							></textarea>
-							<div class="revise-bar">
-								<button
-									class="revise-submit-btn"
-									onclick={submitRevise}
-									disabled={app.revising || !reviseFeedback.trim()}
-								>{app.revising ? 'Revising…' : 'Send to model'}</button>
-								{#if app.revising}<span class="spinner"></span>{/if}
-							</div>
-						</details>
-					</div>
-
 					<div class="scroll-pad"></div>
+				</div>
+
+				<!-- pinned AI footer -->
+				<div class="meta-footer">
+					<div class="footer-head">
+						<span class="footer-label">Revise with AI</span>
+						{#if modelLabel}<span class="footer-model">({modelLabel})</span>{/if}
+					</div>
+					<select
+						class="revise-preset"
+						onchange={(e) => {
+							const val = (e.target as HTMLSelectElement).value;
+							if (val) reviseFeedback = val;
+							(e.target as HTMLSelectElement).value = '';
+						}}
+					>
+						<option value="">— quick presets —</option>
+						<option value="Make this description more neutral.">Make description more neutral</option>
+						<option value="Do not infer the event — describe only what is visible.">Describe only what is visible</option>
+						<option value="Use simpler, public-facing language.">Simpler public-facing language</option>
+						<option value="Remove any terms that are potentially offensive or outdated.">Remove offensive/outdated terms</option>
+						<option value="Expand the description with more visual detail.">Expand with more visual detail</option>
+						<option value="Shorten the description to two sentences.">Shorten to two sentences</option>
+					</select>
+					<textarea
+						class="field-textarea"
+						bind:value={reviseFeedback}
+						placeholder="Describe what to change…"
+						use:autosize={reviseFeedback}
+						rows="2"
+					></textarea>
+					<div class="revise-bar">
+						<button
+							class="revise-submit-btn"
+							onclick={submitRevise}
+							disabled={app.revising || !reviseFeedback.trim()}
+						>{app.revising ? 'Revising…' : 'Send to model'}</button>
+						{#if app.revising}<span class="spinner"></span>{/if}
+					</div>
 				</div>
 			</div>
 		{/if}
@@ -511,12 +540,38 @@
 	}
 	.is-study .image-frame { padding: 3.5rem; }
 
+	.image-frame.is-zoomed {
+		overflow: auto;
+		align-items: flex-start;
+		justify-content: flex-start;
+		cursor: default;
+	}
+
 	.main-img {
-		max-width: 100%;
-		max-height: 100%;
-		object-fit: contain;
 		display: block;
 		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+	}
+	.zoom-fit {
+		max-width: 100%;
+		max-height: 100%;
+		width: auto;
+		height: auto;
+		cursor: zoom-in;
+	}
+	.zoom-100 {
+		width: auto;
+		height: auto;
+		max-width: none;
+		max-height: none;
+		cursor: zoom-out;
+	}
+	.zoom-200 {
+		width: auto;
+		height: auto;
+		max-width: none;
+		max-height: none;
+		zoom: 2;
+		cursor: zoom-out;
 	}
 
 
@@ -598,6 +653,28 @@
 	}
 
 	.nav-spacer { flex: 1; }
+
+	.zoom-btns {
+		display: flex;
+		border: 1px solid var(--c-border);
+		overflow: hidden;
+	}
+	.zoom-btn {
+		background: transparent;
+		border: none;
+		border-left: 1px solid var(--c-border);
+		font-family: var(--font-mono);
+		font-size: 0.5rem;
+		letter-spacing: 0.08em;
+		color: var(--c-ghost);
+		padding: 0.2rem 0.55rem;
+		cursor: pointer;
+		transition: color 0.12s;
+		white-space: nowrap;
+	}
+	.zoom-btn:first-child { border-left: none; }
+	.zoom-btn:hover:not(.is-active) { color: var(--c-muted); }
+	.zoom-btn.is-active { color: var(--c-text); font-weight: 500; }
 
 	.shortcut-hint {
 		font-family: var(--font-mono);
@@ -782,26 +859,32 @@
 	.is-study .field-textarea    { font-size: 0.78rem; }
 	.is-study .field-input.title { font-size: 1.25rem; }
 
-	/* revision section */
-	.section-revision { padding-top: 1rem; }
+	/* pinned AI footer */
+	.meta-footer {
+		flex-shrink: 0;
+		border-top: 1px solid var(--c-border);
+		padding: 0.875rem 1.25rem 1rem 1.875rem;
+		background: var(--c-bg);
+	}
 
-	.revise-with {
+	.footer-head {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		margin-bottom: 0.6rem;
+	}
+	.footer-label {
 		font-family: var(--font-mono);
 		font-size: 0.44rem;
 		letter-spacing: 0.24em;
 		text-transform: uppercase;
 		color: var(--c-accent);
-		font-weight: 400;
-		vertical-align: middle;
 	}
-	.revise-ai {
+	.footer-model {
 		font-family: var(--font-mono);
-		font-size: 1.5rem;
-		font-weight: 500;
-		color: var(--c-accent);
-		letter-spacing: -0.02em;
-		vertical-align: middle;
-		line-height: 1;
+		font-size: 0.44rem;
+		letter-spacing: 0.06em;
+		color: var(--c-ghost);
 	}
 
 	.revise-preset {

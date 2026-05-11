@@ -41,6 +41,13 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/config")
+def config():
+    from app.config import MODEL_BACKEND, OLLAMA_MODEL
+    model = OLLAMA_MODEL if MODEL_BACKEND == "ollama" else MODEL_BACKEND
+    return {"backend": MODEL_BACKEND, "model": model}
+
+
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 

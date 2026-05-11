@@ -74,6 +74,11 @@ export const revise = (imageId: number, feedback: string) =>
 		body: JSON.stringify({ feedback }),
 	});
 
+// ── Config ────────────────────────────────────────────────────────────────────
+
+export const getConfig = () =>
+	req<{ backend: string; model: string }>('/config');
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const exportUrl = (collectionId: number, format: 'csv' | 'json' = 'csv') =>
