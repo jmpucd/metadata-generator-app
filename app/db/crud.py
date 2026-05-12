@@ -81,7 +81,7 @@ def ingest_item(
                 filepath=filepath,
             ))
 
-    db.add(MetadataRecord(item_id=item.id, review_status="needs_review"))
+    db.add(MetadataRecord(item_id=item.id, review_status="queue"))
     db.commit()
     db.refresh(item)
     return item
@@ -147,7 +147,7 @@ def upsert_metadata(db: Session, item_id: int, fields: dict) -> MetadataRecord:
 def set_review_status(db: Session, item_id: int, status: str) -> MetadataRecord:
     rec = get_metadata(db, item_id)
     rec.review_status = status
-    if status == "approved":
+    if status == "ready":
         rec.approved_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(rec)
@@ -157,7 +157,7 @@ def set_review_status(db: Session, item_id: int, status: str) -> MetadataRecord:
 def mark_draft_generated(db: Session, item_id: int) -> None:
     rec = get_metadata(db, item_id)
     rec.draft_generated = True
-    rec.review_status = "needs_review"
+    rec.review_status = "queue"
     db.commit()
 
 
@@ -199,7 +199,7 @@ def get_revision_history(db: Session, item_id: int) -> list[RevisionHistory]:
 def get_approved_records(db: Session, collection_id: Optional[int] = None):
     """Return (Item, MetadataRecord) pairs for all approved items."""
     q = db.query(Item, MetadataRecord).join(MetadataRecord)
-    q = q.filter(MetadataRecord.review_status == "approved")
+    q = q.filter(MetadataRecord.review_status.in_(["ready", "exported"]))
     if collection_id:
         q = q.filter(Item.collection_id == collection_id)
     return q.all()

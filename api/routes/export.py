@@ -26,7 +26,7 @@ def export(
 ):
     pairs = crud.get_approved_records(db, collection_id=collection_id)
     if not pairs:
-        raise HTTPException(status_code=404, detail="No approved records in this collection")
+        raise HTTPException(status_code=404, detail="No ready records in this collection")
 
     rows = []
     for item, rec in pairs:
@@ -50,6 +50,10 @@ def export(
             "review_status":     rec.review_status,
             "approved_at":       rec.approved_at.isoformat() if rec.approved_at else "",
         })
+
+    # Mark all exported items as exported
+    for item, _rec in pairs:
+        crud.set_review_status(db, item.id, "exported")
 
     if format == "json":
         content = json.dumps(rows, indent=2, ensure_ascii=False)

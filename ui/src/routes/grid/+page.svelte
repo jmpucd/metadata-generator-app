@@ -20,11 +20,11 @@
 	}
 
 	const STATUS_COLOR: Record<string, string> = {
-		needs_review: 'var(--c-ghost-lt)',
-		in_progress:  'var(--c-ghost)',
-		revised:      'var(--c-muted)',
-		approved:     'var(--c-text)',
-		flagged:      'var(--c-text)',
+		queue:    'var(--c-ghost-lt)',
+		working:  'var(--c-ghost)',
+		ready:    'var(--c-text)',
+		hold:     'var(--c-muted)',
+		exported: 'var(--c-text)',
 	};
 </script>
 

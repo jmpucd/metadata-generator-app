@@ -67,6 +67,28 @@ def check_and_migrate(verbose: bool = True) -> list[str]:
                 _migrate_images_to_items(conn, verbose)
                 actions.append(f"migrated_legacy_images:{result}")
 
+    # Phase 3: rename legacy status values
+    status_renames = {
+        "needs_review": "queue",
+        "in_progress":  "working",
+        "revised":      "working",
+        "approved":     "ready",
+        "flagged":      "hold",
+    }
+    with engine.connect() as conn:
+        if inspector.has_table("metadata_records"):
+            for old, new in status_renames.items():
+                result = conn.execute(
+                    text("UPDATE metadata_records SET review_status = :new WHERE review_status = :old"),
+                    {"old": old, "new": new},
+                ).rowcount
+                if result:
+                    msg = f"renamed_status:{old}→{new} ({result} rows)"
+                    actions.append(msg)
+                    if verbose:
+                        print(f"  ✚ {msg}")
+            conn.commit()
+
     if not actions and verbose:
         print("  ✔ Schema is up to date — no changes needed.")
 

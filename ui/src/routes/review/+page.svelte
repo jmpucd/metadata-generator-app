@@ -55,9 +55,9 @@
 			app.currentMetadata = meta;
 			syncFields(meta);
 			dirty = false;
-			if (meta.review_status === 'needs_review') {
-				await setStatus(itemId, 'in_progress');
-				meta.review_status = 'in_progress';
+			if (meta.review_status === 'queue') {
+				await setStatus(itemId, 'working');
+				meta.review_status = 'working';
 				const item = app.items.find(i => i.id === itemId);
 				if (item) item.status = 'in_progress';
 			}
@@ -123,9 +123,9 @@
 	async function approve() {
 		const item = app.currentItem;
 		if (!item) return;
-		await setStatus(item.id, 'approved');
-		item.status = 'approved';
-		if (app.currentMetadata) app.currentMetadata.review_status = 'approved';
+		await setStatus(item.id, 'ready');
+		item.status = 'ready';
+		if (app.currentMetadata) app.currentMetadata.review_status = 'ready';
 		if (app.selectedCollectionId !== null) app.stats = await getStats(app.selectedCollectionId);
 		go(1);
 	}
@@ -133,9 +133,9 @@
 	async function flag() {
 		const item = app.currentItem;
 		if (!item) return;
-		await setStatus(item.id, 'flagged');
-		item.status = 'flagged';
-		if (app.currentMetadata) app.currentMetadata.review_status = 'flagged';
+		await setStatus(item.id, 'hold');
+		item.status = 'hold';
+		if (app.currentMetadata) app.currentMetadata.review_status = 'hold';
 	}
 
 	async function submitRevise() {
@@ -194,11 +194,11 @@
 	}
 
 	const STATUS_LABEL: Record<string, string> = {
-		needs_review: 'Needs review',
-		in_progress:  'In progress',
-		revised:      'Revised',
-		approved:     'Approved',
-		flagged:      'Flagged',
+		queue:    'Queue',
+		working:  'Working',
+		ready:    'Ready',
+		hold:     'Hold',
+		exported: 'Exported',
 	};
 
 	const hasPrev = $derived(app.currentIndex > 0);

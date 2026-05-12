@@ -47,5 +47,5 @@ def revise(item_id: int, body: ReviseIn, db: Session = Depends(get_db)):
 
     crud.snapshot_revision(db, item_id, "model_revision", feedback=body.feedback)
     updated = crud.upsert_metadata(db, item_id, revised)
-    crud.set_review_status(db, item_id, "revised")
+    crud.set_review_status(db, item_id, "working")
     return updated.to_dict()

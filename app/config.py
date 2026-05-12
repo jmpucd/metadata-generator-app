@@ -52,7 +52,7 @@ METADATA_FIELDS: list[dict] = [
     {"key": "reviewer_notes",    "label": "Reviewer Notes",        "type": "textarea", "required": False},
 ]
 
-REVIEW_STATUSES = ["needs_review", "in_progress", "revised", "approved", "flagged"]
+REVIEW_STATUSES = ["queue", "working", "ready", "hold", "exported"]
 
 # ── Streamlit page config ──────────────────────────────────────────────────────
 PAGE_TITLE = "Photo Metadata Review"

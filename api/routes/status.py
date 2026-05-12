@@ -28,7 +28,7 @@ def set_status(item_id: int, body: StatusIn, db: Session = Depends(get_db)):
     item = crud.get_item(db, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    if body.status == "approved":
-        crud.snapshot_revision(db, item_id, "approved", revised_by="reviewer")
+    if body.status == "ready":
+        crud.snapshot_revision(db, item_id, "ready", revised_by="reviewer")
     rec = crud.set_review_status(db, item_id, body.status)
     return {"item_id": item_id, "status": rec.review_status}

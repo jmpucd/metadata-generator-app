@@ -8,12 +8,12 @@
 	let { children } = $props();
 
 	const STATUS_OPTIONS = [
-		{ value: 'all',          label: 'All' },
-		{ value: 'needs_review', label: 'Needs review' },
-		{ value: 'in_progress',  label: 'In progress' },
-		{ value: 'revised',      label: 'Revised' },
-		{ value: 'approved',     label: 'Approved' },
-		{ value: 'flagged',      label: 'Flagged' },
+		{ value: 'all',      label: 'All' },
+		{ value: 'queue',    label: 'Queue' },
+		{ value: 'working',  label: 'Working' },
+		{ value: 'ready',    label: 'Ready' },
+		{ value: 'hold',     label: 'Hold' },
+		{ value: 'exported', label: 'Exported' },
 	];
 
 	async function loadCollections() {
@@ -36,11 +36,11 @@
 	onMount(loadCollections);
 
 	const STATUS_LABELS: Record<string, string> = {
-		needs_review: 'Needs review',
-		in_progress:  'In progress',
-		revised:      'Revised',
-		approved:     'Approved',
-		flagged:      'Flagged',
+		queue:    'Queue',
+		working:  'Working',
+		ready:    'Ready',
+		hold:     'Hold',
+		exported: 'Exported',
 	};
 
 	function pad(n: number | undefined) {
