@@ -208,7 +208,7 @@
 	const hasPrev = $derived(app.currentIndex > 0);
 	const hasNext = $derived(app.currentIndex < app.total - 1);
 	const isMultiPage = $derived((app.currentItem?.pages.length ?? 0) > 1);
-	const approveLabel = $derived(app.currentMetadata?.review_status === 'ready' ? 'Reopen' : 'Ready');
+	const approveLabel = $derived(app.currentMetadata?.review_status === 'ready' ? 'Reopen' : 'Approve');
 	const flagLabel    = $derived(app.currentMetadata?.review_status === 'hold'  ? 'Unhold' : 'Hold');
 </script>
 
