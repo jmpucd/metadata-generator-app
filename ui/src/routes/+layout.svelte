@@ -11,7 +11,7 @@
 		{ value: 'all',      label: 'All' },
 		{ value: 'queue',    label: 'Queue' },
 		{ value: 'working',  label: 'Working' },
-		{ value: 'ready',    label: 'Ready' },
+		{ value: 'ready',    label: 'Approved' },
 		{ value: 'hold',     label: 'Hold' },
 		{ value: 'exported', label: 'Exported' },
 	];
@@ -38,7 +38,7 @@
 	const STATUS_LABELS: Record<string, string> = {
 		queue:    'Queue',
 		working:  'Working',
-		ready:    'Ready',
+		ready:    'Approved',
 		hold:     'Hold',
 		exported: 'Exported',
 	};

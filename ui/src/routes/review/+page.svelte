@@ -200,7 +200,7 @@
 	const STATUS_LABEL: Record<string, string> = {
 		queue:    'Queue',
 		working:  'Working',
-		ready:    'Ready',
+		ready:    'Approved',
 		hold:     'Hold',
 		exported: 'Exported',
 	};
