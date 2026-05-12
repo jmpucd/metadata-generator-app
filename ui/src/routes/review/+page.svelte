@@ -123,19 +123,23 @@
 	async function approve() {
 		const item = app.currentItem;
 		if (!item) return;
-		await setStatus(item.id, 'ready');
-		item.status = 'ready';
-		if (app.currentMetadata) app.currentMetadata.review_status = 'ready';
+		const current = app.currentMetadata?.review_status;
+		const next = current === 'ready' ? 'working' : 'ready';
+		await setStatus(item.id, next);
+		item.status = next;
+		if (app.currentMetadata) app.currentMetadata.review_status = next;
 		if (app.selectedCollectionId !== null) app.stats = await getStats(app.selectedCollectionId);
-		go(1);
+		if (next === 'ready') go(1);
 	}
 
 	async function flag() {
 		const item = app.currentItem;
 		if (!item) return;
-		await setStatus(item.id, 'hold');
-		item.status = 'hold';
-		if (app.currentMetadata) app.currentMetadata.review_status = 'hold';
+		const current = app.currentMetadata?.review_status;
+		const next = current === 'hold' ? 'working' : 'hold';
+		await setStatus(item.id, next);
+		item.status = next;
+		if (app.currentMetadata) app.currentMetadata.review_status = next;
 	}
 
 	async function submitRevise() {
@@ -204,6 +208,8 @@
 	const hasPrev = $derived(app.currentIndex > 0);
 	const hasNext = $derived(app.currentIndex < app.total - 1);
 	const isMultiPage = $derived((app.currentItem?.pages.length ?? 0) > 1);
+	const approveLabel = $derived(app.currentMetadata?.review_status === 'ready' ? 'Reopen' : 'Ready');
+	const flagLabel    = $derived(app.currentMetadata?.review_status === 'hold'  ? 'Unhold' : 'Hold');
 </script>
 
 <svelte:window onkeydown={handleKey} />
@@ -294,8 +300,8 @@
 				</span>
 
 				<div class="nav-actions">
-					<button class="viewer-action-btn is-approve" onclick={approve}>Approve</button>
-					<button class="viewer-action-btn is-flag"    onclick={flag}>Flag</button>
+					<button class="viewer-action-btn is-approve" onclick={approve}>{approveLabel}</button>
+					<button class="viewer-action-btn is-flag"    onclick={flag}>{flagLabel}</button>
 				</div>
 
 				<div class="nav-spacer"></div>
@@ -332,8 +338,8 @@
 
 				<!-- pinned decision bar -->
 				<div class="panel-actions">
-					<button class="action-approve" onclick={approve}>Approve</button>
-					<button class="action-flag" onclick={flag}>Flag</button>
+					<button class="action-approve" onclick={approve}>{approveLabel}</button>
+					<button class="action-flag" onclick={flag}>{flagLabel}</button>
 					<div class="actions-spacer"></div>
 					<button
 						class="save-btn"
