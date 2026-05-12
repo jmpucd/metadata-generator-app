@@ -1,4 +1,4 @@
-import type { Collection, ImageEntry, MetadataRecord, RevisionEntry, StatusCounts } from './types';
+import type { Collection, ItemEntry, MetadataRecord, RevisionEntry, StatusCounts } from './types';
 
 const BASE = '/api';
 
@@ -33,42 +33,44 @@ export const updateCollection = (id: number, body: Partial<Collection>) =>
 export const getStats = (collectionId: number) =>
 	req<StatusCounts>(`/collections/${collectionId}/stats`);
 
-// ── Images ────────────────────────────────────────────────────────────────────
+// ── Items ─────────────────────────────────────────────────────────────────────
 
-export const getImages = (collectionId: number, status?: string) => {
+export const getItems = (collectionId: number, status?: string) => {
 	const qs = status && status !== 'all' ? `?status=${status}` : '';
-	return req<ImageEntry[]>(`/collections/${collectionId}/images${qs}`);
+	return req<ItemEntry[]>(`/collections/${collectionId}/items${qs}`);
 };
 
-export const imageFileUrl  = (id: number) => `${BASE}/images/${id}/file`;
-export const thumbnailUrl  = (id: number) => `${BASE}/images/${id}/thumbnail`;
+// ── Images (file serving) ─────────────────────────────────────────────────────
+
+export const imageFileUrl = (id: number) => `${BASE}/images/${id}/file`;
+export const thumbnailUrl = (id: number) => `${BASE}/images/${id}/thumbnail`;
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
 
-export const getMetadata = (imageId: number) =>
-	req<MetadataRecord>(`/metadata/${imageId}`);
+export const getMetadata = (itemId: number) =>
+	req<MetadataRecord>(`/metadata/${itemId}`);
 
-export const putMetadata = (imageId: number, fields: Partial<MetadataRecord>) =>
-	req<MetadataRecord>(`/metadata/${imageId}`, {
+export const putMetadata = (itemId: number, fields: Partial<MetadataRecord>) =>
+	req<MetadataRecord>(`/metadata/${itemId}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(fields),
 	});
 
-export const setStatus = (imageId: number, status: string) =>
-	req<{ image_id: number; status: string }>(`/metadata/${imageId}/status`, {
+export const setStatus = (itemId: number, status: string) =>
+	req<{ item_id: number; status: string }>(`/metadata/${itemId}/status`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ status }),
 	});
 
-export const getHistory = (imageId: number) =>
-	req<RevisionEntry[]>(`/metadata/${imageId}/history`);
+export const getHistory = (itemId: number) =>
+	req<RevisionEntry[]>(`/metadata/${itemId}/history`);
 
 // ── Revise ────────────────────────────────────────────────────────────────────
 
-export const revise = (imageId: number, feedback: string) =>
-	req<MetadataRecord>(`/metadata/${imageId}/revise`, {
+export const revise = (itemId: number, feedback: string) =>
+	req<MetadataRecord>(`/metadata/${itemId}/revise`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ feedback }),

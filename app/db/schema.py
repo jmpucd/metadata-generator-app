@@ -4,8 +4,9 @@ app/db/schema.py — SQLAlchemy ORM models.
 Tables
 ------
 collections     One row per review session / collection.
-images          One row per ingested image file.
-metadata_records  Current metadata for an image (one active row per image).
+items           One logical item — single image or multi-page folder.
+images          One row per physical image file (a page of an item).
+metadata_records  Current metadata for an item (one active row per item).
 revision_history  Append-only log of every metadata snapshot + feedback.
 """
 from __future__ import annotations
@@ -41,7 +42,7 @@ class Collection(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     description_style: Mapped[Optional[str]] = mapped_column(Text)
-    controlled_vocabulary: Mapped[Optional[str]] = mapped_column(Text)   # free text / JSON list
+    controlled_vocabulary: Mapped[Optional[str]] = mapped_column(Text)
     known_locations: Mapped[Optional[str]] = mapped_column(Text)
     known_date_range: Mapped[Optional[str]] = mapped_column(String(100))
     known_people_orgs: Mapped[Optional[str]] = mapped_column(Text)
@@ -52,10 +53,9 @@ class Collection(Base):
         DateTime, default=datetime.datetime.utcnow
     )
 
-    images: Mapped[list["Image"]] = relationship("Image", back_populates="collection")
+    items: Mapped[list["Item"]] = relationship("Item", back_populates="collection")
 
     def session_context(self) -> dict:
-        """Return a plain dict suitable for passing to the VLM prompt builder."""
         return {
             "collection_name": self.name,
             "description_style": self.description_style or "",
@@ -69,27 +69,50 @@ class Collection(Base):
         }
 
 
-# ── Images ────────────────────────────────────────────────────────────────────
+# ── Items (logical archival items; one item = one metadata record) ─────────────
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collections.id"), nullable=False)
+    series: Mapped[Optional[str]] = mapped_column(String(500))    # parent folder name
+    item_key: Mapped[str] = mapped_column(String(500), nullable=False)  # folder/filename stem
+    folder_path: Mapped[Optional[str]] = mapped_column(String(1000))    # None for single-image items
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="items")
+    pages: Mapped[list["Image"]] = relationship(
+        "Image", back_populates="item", order_by="Image.page_number"
+    )
+    metadata_record: Mapped[Optional["MetadataRecord"]] = relationship(
+        "MetadataRecord", back_populates="item", uselist=False
+    )
+    history: Mapped[list["RevisionHistory"]] = relationship(
+        "RevisionHistory", back_populates="item", order_by="RevisionHistory.revised_at"
+    )
+
+
+# ── Images (physical pages; always belong to an Item) ─────────────────────────
 
 class Image(Base):
     __tablename__ = "images"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     collection_id: Mapped[int] = mapped_column(ForeignKey("collections.id"), nullable=False)
+    item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("items.id"), nullable=True)
+    page_number: Mapped[int] = mapped_column(Integer, default=1)
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     filepath: Mapped[str] = mapped_column(String(1000), nullable=False, unique=True)
-    file_hash: Mapped[Optional[str]] = mapped_column(String(64))   # sha256
+    file_hash: Mapped[Optional[str]] = mapped_column(String(64))
     ingested_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
 
-    collection: Mapped["Collection"] = relationship("Collection", back_populates="images")
-    metadata_record: Mapped[Optional["MetadataRecord"]] = relationship(
-        "MetadataRecord", back_populates="image", uselist=False
-    )
-    history: Mapped[list["RevisionHistory"]] = relationship(
-        "RevisionHistory", back_populates="image", order_by="RevisionHistory.revised_at"
-    )
+    collection: Mapped["Collection"] = relationship("Collection")
+    item: Mapped[Optional["Item"]] = relationship("Item", back_populates="pages")
 
 
 # ── Metadata records ──────────────────────────────────────────────────────────
@@ -98,9 +121,8 @@ class MetadataRecord(Base):
     __tablename__ = "metadata_records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    image_id: Mapped[int] = mapped_column(ForeignKey("images.id"), nullable=False, unique=True)
+    item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("items.id"), nullable=True, unique=True)
 
-    # Core fields (plain text; tags stored as JSON-encoded lists)
     title: Mapped[Optional[str]] = mapped_column(Text)
     description: Mapped[Optional[str]] = mapped_column(Text)
     visible_text: Mapped[Optional[str]] = mapped_column(Text)
@@ -112,7 +134,6 @@ class MetadataRecord(Base):
     uncertainty_notes: Mapped[Optional[str]] = mapped_column(Text)
     reviewer_notes: Mapped[Optional[str]] = mapped_column(Text)
 
-    # Workflow
     review_status: Mapped[str] = mapped_column(
         String(50), default="needs_review", nullable=False
     )
@@ -121,9 +142,7 @@ class MetadataRecord(Base):
     approved_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     approved_by: Mapped[Optional[str]] = mapped_column(String(200))
 
-    image: Mapped["Image"] = relationship("Image", back_populates="metadata_record")
-
-    # ── Helpers for tag fields ────────────────────────────────────────────────
+    item: Mapped[Optional["Item"]] = relationship("Item", back_populates="metadata_record")
 
     def get_tags(self, field: str) -> list[str]:
         raw = getattr(self, field, None)
@@ -140,7 +159,7 @@ class MetadataRecord(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "image_id": self.image_id,
+            "item_id": self.item_id,
             "title": self.title,
             "description": self.description,
             "visible_text": self.visible_text,
@@ -165,26 +184,27 @@ class RevisionHistory(Base):
     __tablename__ = "revision_history"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    image_id: Mapped[int] = mapped_column(ForeignKey("images.id"), nullable=False)
-    revision_type: Mapped[str] = mapped_column(String(50))  # "draft" | "human_edit" | "model_revision" | "approved"
-    metadata_snapshot: Mapped[str] = mapped_column(Text)    # JSON dump of MetadataRecord at this point
-    feedback_given: Mapped[Optional[str]] = mapped_column(Text)  # reviewer's instruction to the model
+    item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("items.id"), nullable=True)
+    revision_type: Mapped[str] = mapped_column(String(50))
+    metadata_snapshot: Mapped[str] = mapped_column(Text)
+    feedback_given: Mapped[Optional[str]] = mapped_column(Text)
     revised_by: Mapped[str] = mapped_column(String(100), default="system")
     revised_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
 
-    image: Mapped["Image"] = relationship("Image", back_populates="history")
+    item: Mapped[Optional["Item"]] = relationship("Item", back_populates="history")
 
 
 # ── Engine / session factory ──────────────────────────────────────────────────
 
 def get_engine():
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    # Enable WAL mode for SQLite so reads don't block writes
+
     @event.listens_for(engine, "connect")
     def set_wal(dbapi_conn, _):
         dbapi_conn.execute("PRAGMA journal_mode=WAL")
+
     return engine
 
 

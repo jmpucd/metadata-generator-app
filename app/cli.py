@@ -45,13 +45,23 @@ def _get_db():
 
 @app.command()
 def ingest(
-    folder: Path = typer.Argument(..., help="Path to the folder of images to ingest."),
+    folder: Path = typer.Argument(..., help="Path to the folder to ingest."),
     collection: str = typer.Option(..., "--collection", "-c", help="Collection name."),
-    recursive: bool = typer.Option(True, help="Search sub-folders recursively."),
 ):
-    """Ingest a folder of images into the database."""
-    from app.db.crud import get_or_create_collection, ingest_image
-    from app.utils.image_utils import find_images, sha256_file
+    """Ingest a folder into the database, auto-detecting item structure.
+
+    - Folder of images → each image becomes its own single-page item.
+    - Folder of sub-folders → each sub-folder becomes a multi-page item.
+    """
+    from app.db.crud import get_or_create_collection, ingest_item
+
+    IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".gif", ".bmp", ".webp"}
+
+    def is_image(p: Path) -> bool:
+        return p.is_file() and p.suffix.lower() in IMAGE_EXTS
+
+    def flat_images(d: Path) -> list[Path]:
+        return sorted(p for p in d.iterdir() if is_image(p))
 
     if not folder.exists():
         rprint(f"[red]Folder not found:[/red] {folder}")
@@ -61,17 +71,38 @@ def ingest(
     coll = get_or_create_collection(db, collection)
     rprint(f"[bold]Collection:[/bold] {coll.name} (id={coll.id})")
 
-    images = find_images(folder) if recursive else [
-        p for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".gif", ".bmp", ".webp"}
-    ]
+    subdirs = sorted(d for d in folder.iterdir() if d.is_dir())
+    flat = flat_images(folder)
+    series = folder.name
 
-    if not images:
-        rprint("[yellow]No supported image files found.[/yellow]")
+    items_to_ingest: list[tuple[str, str, Optional[str], list[tuple[str, int]]]] = []
+
+    if subdirs:
+        # Each sub-folder is a multi-page item
+        for subdir in subdirs:
+            pages = flat_images(subdir)
+            if pages:
+                items_to_ingest.append((
+                    subdir.name,
+                    series,
+                    str(subdir),
+                    [(str(p), i + 1) for i, p in enumerate(pages)],
+                ))
+    elif flat:
+        # Each image is its own single-page item
+        for img_path in flat:
+            items_to_ingest.append((
+                img_path.stem,
+                series,
+                None,
+                [(str(img_path), 1)],
+            ))
+
+    if not items_to_ingest:
+        rprint("[yellow]No images found.[/yellow]")
         raise typer.Exit(0)
 
     new_count = 0
-    skipped = 0
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -79,17 +110,13 @@ def ingest(
         TaskProgressColumn(),
         console=console,
     ) as progress:
-        task = progress.add_task("Ingesting…", total=len(images))
-        for img_path in images:
-            file_hash = sha256_file(img_path)
-            img = ingest_image(db, str(img_path), coll.id, file_hash)
-            if img.ingested_at:
-                new_count += 1
-            else:
-                skipped += 1
+        task = progress.add_task("Ingesting…", total=len(items_to_ingest))
+        for item_key, ser, folder_path, pages in items_to_ingest:
+            ingest_item(db, coll.id, item_key, pages, series=ser, folder_path=folder_path)
+            new_count += 1
             progress.advance(task)
 
-    rprint(f"[green]✔ Done.[/green] {new_count} ingested, {skipped} already known.")
+    rprint(f"[green]✔ Done.[/green] {new_count} item(s) ingested.")
 
 
 # ── generate ──────────────────────────────────────────────────────────────────
@@ -97,12 +124,12 @@ def ingest(
 @app.command()
 def generate(
     collection: str = typer.Option(..., "--collection", "-c", help="Collection name."),
-    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max images to process."),
+    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max items to process."),
     overwrite: bool = typer.Option(False, "--overwrite", help="Re-generate even if draft exists."),
 ):
-    """Generate draft metadata for images using the local VLM."""
+    """Generate draft metadata for items using the local VLM."""
     from app.db.crud import (
-        get_collection_by_name, list_images, get_metadata,
+        get_collection_by_name, list_items, get_metadata,
         upsert_metadata, mark_draft_generated, snapshot_revision,
     )
     from app.models.local_vlm import generate_metadata
@@ -113,18 +140,21 @@ def generate(
         rprint(f"[red]Collection not found:[/red] {collection!r}")
         raise typer.Exit(1)
 
-    images = list_images(db, collection_id=coll.id)
+    items = list_items(db, collection_id=coll.id)
     if not overwrite:
-        images = [img for img in images if not (get_metadata(db, img.id) and get_metadata(db, img.id).draft_generated)]
+        items = [
+            item for item in items
+            if not (get_metadata(db, item.id) and get_metadata(db, item.id).draft_generated)
+        ]
 
     if limit:
-        images = images[:limit]
+        items = items[:limit]
 
-    if not images:
-        rprint("[yellow]No images need draft generation.[/yellow]")
+    if not items:
+        rprint("[yellow]No items need draft generation.[/yellow]")
         raise typer.Exit(0)
 
-    rprint(f"[bold]Generating metadata for {len(images)} images…[/bold]")
+    rprint(f"[bold]Generating metadata for {len(items)} item(s)…[/bold]")
     session_ctx = coll.session_context()
     errors = 0
 
@@ -135,21 +165,26 @@ def generate(
         TaskProgressColumn(),
         console=console,
     ) as progress:
-        task = progress.add_task("Processing…", total=len(images))
-        for img in images:
-            progress.update(task, description=img.filename)
+        task = progress.add_task("Processing…", total=len(items))
+        for item in items:
+            if not item.pages:
+                rprint(f"[yellow]  ⚠ {item.item_key}: no pages, skipping[/yellow]")
+                progress.advance(task)
+                continue
+            rep = item.pages[0]  # representative page for VLM
+            progress.update(task, description=item.item_key)
             try:
-                fields = generate_metadata(img.filepath, session_ctx)
-                upsert_metadata(db, img.id, fields)
-                mark_draft_generated(db, img.id)
-                snapshot_revision(db, img.id, "draft")
+                fields = generate_metadata(rep.filepath, session_ctx)
+                upsert_metadata(db, item.id, fields)
+                mark_draft_generated(db, item.id)
+                snapshot_revision(db, item.id, "draft")
             except Exception as e:
                 db.rollback()
-                rprint(f"[red]  ✗ {img.filename}: {e}[/red]")
+                rprint(f"[red]  ✗ {item.item_key}: {e}[/red]")
                 errors += 1
             progress.advance(task)
 
-    rprint(f"[green]✔ Done.[/green] {len(images) - errors} succeeded, {errors} failed.")
+    rprint(f"[green]✔ Done.[/green] {len(items) - errors} succeeded, {errors} failed.")
 
 
 # ── review ────────────────────────────────────────────────────────────────────

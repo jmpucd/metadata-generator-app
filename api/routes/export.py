@@ -29,10 +29,14 @@ def export(
         raise HTTPException(status_code=404, detail="No approved records in this collection")
 
     rows = []
-    for img, rec in pairs:
+    for item, rec in pairs:
+        rep = item.pages[0] if item.pages else None
         rows.append({
-            "filename":          img.filename,
-            "filepath":          img.filepath,
+            "item_key":          item.item_key,
+            "series":            item.series or "",
+            "filename":          rep.filename if rep else "",
+            "filepath":          rep.filepath if rep else "",
+            "page_count":        len(item.pages),
             "title":             rec.title or "",
             "description":       rec.description or "",
             "visible_text":      rec.visible_text or "",
@@ -58,7 +62,8 @@ def export(
     # CSV — flatten list fields to semicolon-separated strings
     buf = io.StringIO()
     fieldnames = [
-        "filename", "title", "description", "visible_text",
+        "item_key", "series", "filename", "page_count",
+        "title", "description", "visible_text",
         "subjects", "people", "places", "dates", "objects",
         "uncertainty_notes", "reviewer_notes", "approved_at",
     ]

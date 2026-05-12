@@ -1,9 +1,9 @@
 """
 api/routes/metadata.py
 
-GET /api/metadata/{image_id}
-PUT /api/metadata/{image_id}
-GET /api/metadata/{image_id}/history
+GET /api/metadata/{item_id}
+PUT /api/metadata/{item_id}
+GET /api/metadata/{item_id}/history
 """
 from typing import List, Optional
 
@@ -30,28 +30,28 @@ class MetadataIn(BaseModel):
     reviewer_notes: Optional[str] = None
 
 
-@router.get("/metadata/{image_id}")
-def get_metadata(image_id: int, db: Session = Depends(get_db)):
-    rec = crud.get_metadata(db, image_id)
+@router.get("/metadata/{item_id}")
+def get_metadata(item_id: int, db: Session = Depends(get_db)):
+    rec = crud.get_metadata(db, item_id)
     if not rec:
-        raise HTTPException(status_code=404, detail="No metadata record for this image")
+        raise HTTPException(status_code=404, detail="No metadata record for this item")
     return rec.to_dict()
 
 
-@router.put("/metadata/{image_id}")
-def update_metadata(image_id: int, body: MetadataIn, db: Session = Depends(get_db)):
-    img = crud.get_image(db, image_id)
-    if not img:
-        raise HTTPException(status_code=404, detail="Image not found")
+@router.put("/metadata/{item_id}")
+def update_metadata(item_id: int, body: MetadataIn, db: Session = Depends(get_db)):
+    item = crud.get_item(db, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
     fields = body.model_dump(exclude_none=True)
-    crud.snapshot_revision(db, image_id, "human_edit", revised_by="reviewer")
-    rec = crud.upsert_metadata(db, image_id, fields)
+    crud.snapshot_revision(db, item_id, "human_edit", revised_by="reviewer")
+    rec = crud.upsert_metadata(db, item_id, fields)
     return rec.to_dict()
 
 
-@router.get("/metadata/{image_id}/history")
-def get_history(image_id: int, db: Session = Depends(get_db)):
-    history = crud.get_revision_history(db, image_id)
+@router.get("/metadata/{item_id}/history")
+def get_history(item_id: int, db: Session = Depends(get_db)):
+    history = crud.get_revision_history(db, item_id)
     return [
         {
             "id": h.id,
@@ -59,7 +59,7 @@ def get_history(image_id: int, db: Session = Depends(get_db)):
             "revised_by": h.revised_by,
             "revised_at": h.revised_at.isoformat(),
             "feedback_given": h.feedback_given,
-            "snapshot": h.metadata_snapshot,  # JSON string — client parses if needed
+            "snapshot": h.metadata_snapshot,
         }
         for h in history
     ]

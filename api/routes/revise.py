@@ -1,12 +1,7 @@
 """
 api/routes/revise.py
 
-POST /api/metadata/{image_id}/revise
-
-Calls the configured VLM backend (Ollama / Claude / mock) with the
-reviewer's feedback and returns updated metadata.  Runs synchronously —
-Ollama at 600s timeout means this can be slow; the frontend should show
-a loading state and not time out early.
+POST /api/metadata/{item_id}/revise
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -23,33 +18,34 @@ class ReviseIn(BaseModel):
     feedback: str
 
 
-@router.post("/metadata/{image_id}/revise")
-def revise(image_id: int, body: ReviseIn, db: Session = Depends(get_db)):
+@router.post("/metadata/{item_id}/revise")
+def revise(item_id: int, body: ReviseIn, db: Session = Depends(get_db)):
     if not body.feedback.strip():
         raise HTTPException(status_code=422, detail="feedback must not be empty")
 
-    img = crud.get_image(db, image_id)
-    if not img:
-        raise HTTPException(status_code=404, detail="Image not found")
+    item = crud.get_item(db, item_id)
+    if not item or not item.pages:
+        raise HTTPException(status_code=404, detail="Item not found or has no pages")
 
-    rec = crud.get_metadata(db, image_id)
+    rec = crud.get_metadata(db, item_id)
     if not rec:
         raise HTTPException(
             status_code=400,
             detail="No metadata record — generate a draft first via the CLI",
         )
 
+    rep = item.pages[0]  # representative page for VLM
     try:
         revised = vlm_revise(
-            image_path=img.filepath,
+            image_path=rep.filepath,
             current_metadata=rec.to_dict(),
             feedback=body.feedback,
-            session_context=img.collection.session_context(),
+            session_context=item.collection.session_context(),
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"VLM error: {exc}") from exc
 
-    crud.snapshot_revision(db, image_id, "model_revision", feedback=body.feedback)
-    updated = crud.upsert_metadata(db, image_id, revised)
-    crud.set_review_status(db, image_id, "revised")
+    crud.snapshot_revision(db, item_id, "model_revision", feedback=body.feedback)
+    updated = crud.upsert_metadata(db, item_id, revised)
+    crud.set_review_status(db, item_id, "revised")
     return updated.to_dict()

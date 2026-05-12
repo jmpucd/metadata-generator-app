@@ -1,10 +1,9 @@
 """
 api/routes/images.py
 
-GET /api/collections/{id}/images?status=...
-GET /api/images/{id}
-GET /api/images/{id}/file
-GET /api/images/{id}/thumbnail
+GET /api/collections/{id}/items?status=...   — list items with pages
+GET /api/images/{id}/file                    — serve image file
+GET /api/images/{id}/thumbnail               — serve thumbnail
 """
 import mimetypes
 from pathlib import Path
@@ -21,37 +20,36 @@ from app.utils.image_utils import make_thumbnail_bytes
 router = APIRouter()
 
 
-def _serialize(img) -> dict:
-    rec = img.metadata_record
+def _serialize_item(item) -> dict:
+    rec = item.metadata_record
     return {
-        "id": img.id,
-        "filename": img.filename,
-        "filepath": img.filepath,
-        "collection_id": img.collection_id,
-        "ingested_at": img.ingested_at.isoformat(),
+        "id": item.id,
+        "collection_id": item.collection_id,
+        "series": item.series or "",
+        "item_key": item.item_key,
         "status": rec.review_status if rec else "needs_review",
         "draft_generated": rec.draft_generated if rec else False,
+        "pages": [
+            {
+                "id": page.id,
+                "filename": page.filename,
+                "filepath": page.filepath,
+                "page_number": page.page_number,
+            }
+            for page in item.pages
+        ],
     }
 
 
-@router.get("/collections/{collection_id}/images")
-def list_images(
+@router.get("/collections/{collection_id}/items")
+def list_items(
     collection_id: int,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    # "all" is a UI sentinel — treat as no filter
     status_filter = None if (not status or status == "all") else status
-    images = crud.list_images(db, collection_id=collection_id, status=status_filter)
-    return [_serialize(img) for img in images]
-
-
-@router.get("/images/{image_id}")
-def get_image(image_id: int, db: Session = Depends(get_db)):
-    img = crud.get_image(db, image_id)
-    if not img:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return _serialize(img)
+    items = crud.list_items(db, collection_id=collection_id, status=status_filter)
+    return [_serialize_item(item) for item in items]
 
 
 @router.get("/images/{image_id}/file")

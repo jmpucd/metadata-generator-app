@@ -1,11 +1,11 @@
-import type { Collection, ImageEntry, MetadataRecord, StatusCounts } from './types';
+import type { Collection, ItemEntry, MetadataRecord, StatusCounts } from './types';
 
 class AppState {
 	collections: Collection[] = $state([]);
 	selectedCollectionId: number | null = $state(null);
 	statusFilter: string = $state('all');
 
-	images: ImageEntry[] = $state([]);
+	items: ItemEntry[] = $state([]);
 	currentIndex: number = $state(0);
 	currentMetadata: MetadataRecord | null = $state(null);
 
@@ -15,12 +15,12 @@ class AppState {
 	revising: boolean = $state(false);
 	panelOpen: boolean = $state(true);
 
-	get currentImage(): ImageEntry | null {
-		return this.images[this.currentIndex] ?? null;
+	get currentItem(): ItemEntry | null {
+		return this.items[this.currentIndex] ?? null;
 	}
 
 	get total(): number {
-		return this.images.length;
+		return this.items.length;
 	}
 
 	get selectedCollection(): Collection | null {

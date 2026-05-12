@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
 	import {
-		getImages, getMetadata, putMetadata, setStatus, revise,
+		getItems, getMetadata, putMetadata, setStatus, revise,
 		imageFileUrl, getStats, getConfig,
 	} from '$lib/api';
 	import type { MetadataRecord } from '$lib/types';
 
 	type Mode = 'study' | 'cataloging';
-
 	type Zoom = 'fit' | '100' | '200';
 
 	let mode           = $state<Mode>('cataloging');
@@ -33,34 +32,34 @@
 		const colId  = app.selectedCollectionId;
 		const filter = app.statusFilter;
 		if (colId === null) return;
-		getImages(colId, filter).then(imgs => {
-			app.images = imgs;
+		getItems(colId, filter).then(items => {
+			app.items = items;
 			app.currentIndex = 0;
-			if (imgs.length) loadMeta(imgs[0].id);
+			if (items.length) loadMeta(items[0].id);
 			else app.currentMetadata = null;
 		});
 	});
 
 	$effect(() => {
-		const img = app.currentImage;
-		if (!img) return;
-		loadMeta(img.id);
+		const item = app.currentItem;
+		if (!item) return;
+		loadMeta(item.id);
 	});
 
 	getConfig().then(c => { modelLabel = c.model; }).catch(() => {});
 
-	async function loadMeta(imageId: number) {
+	async function loadMeta(itemId: number) {
 		loadingImage = true;
 		try {
-			const meta = await getMetadata(imageId);
+			const meta = await getMetadata(itemId);
 			app.currentMetadata = meta;
 			syncFields(meta);
 			dirty = false;
 			if (meta.review_status === 'needs_review') {
-				await setStatus(imageId, 'in_progress');
+				await setStatus(itemId, 'in_progress');
 				meta.review_status = 'in_progress';
-				const img = app.images.find(i => i.id === imageId);
-				if (img) img.status = 'in_progress';
+				const item = app.items.find(i => i.id === itemId);
+				if (item) item.status = 'in_progress';
 			}
 		} finally {
 			loadingImage = false;
@@ -87,11 +86,11 @@
 	function markDirty() { dirty = true; }
 
 	async function save() {
-		const img = app.currentImage;
-		if (!img || app.saving) return;
+		const item = app.currentItem;
+		if (!item || app.saving) return;
 		app.saving = true;
 		try {
-			const updated = await putMetadata(img.id, {
+			const updated = await putMetadata(item.id, {
 				title:             title || null,
 				description:       description || null,
 				visible_text:      visibleText || null,
@@ -122,29 +121,29 @@
 	}
 
 	async function approve() {
-		const img = app.currentImage;
-		if (!img) return;
-		await setStatus(img.id, 'approved');
-		img.status = 'approved';
+		const item = app.currentItem;
+		if (!item) return;
+		await setStatus(item.id, 'approved');
+		item.status = 'approved';
 		if (app.currentMetadata) app.currentMetadata.review_status = 'approved';
 		if (app.selectedCollectionId !== null) app.stats = await getStats(app.selectedCollectionId);
 		go(1);
 	}
 
 	async function flag() {
-		const img = app.currentImage;
-		if (!img) return;
-		await setStatus(img.id, 'flagged');
-		img.status = 'flagged';
+		const item = app.currentItem;
+		if (!item) return;
+		await setStatus(item.id, 'flagged');
+		item.status = 'flagged';
 		if (app.currentMetadata) app.currentMetadata.review_status = 'flagged';
 	}
 
 	async function submitRevise() {
-		const img = app.currentImage;
-		if (!img || !reviseFeedback.trim() || app.revising) return;
+		const item = app.currentItem;
+		if (!item || !reviseFeedback.trim() || app.revising) return;
 		app.revising = true;
 		try {
-			const updated = await revise(img.id, reviseFeedback);
+			const updated = await revise(item.id, reviseFeedback);
 			app.currentMetadata = updated;
 			syncFields(updated);
 			dirty = false;
@@ -204,16 +203,17 @@
 
 	const hasPrev = $derived(app.currentIndex > 0);
 	const hasNext = $derived(app.currentIndex < app.total - 1);
+	const isMultiPage = $derived((app.currentItem?.pages.length ?? 0) > 1);
 </script>
 
 <svelte:window onkeydown={handleKey} />
 
-{#if !app.currentImage}
+{#if !app.currentItem}
 	<div class="empty-state">
 		{#if app.selectedCollectionId === null}
 			Select a collection to begin.
 		{:else}
-			No images match this filter.
+			No items match this filter.
 		{/if}
 	</div>
 {:else}
@@ -225,8 +225,12 @@
 			<!-- provenance strip -->
 			<div class="viewer-strip">
 				<span class="strip-col">{app.selectedCollection?.name ?? ''}</span>
+				{#if app.currentItem.series}
+					<span class="strip-sep">·</span>
+					<span class="strip-series">{app.currentItem.series}</span>
+				{/if}
 				<span class="strip-sep">·</span>
-				<span class="strip-file">{app.currentImage.filename}</span>
+				<span class="strip-file">{app.currentItem.item_key}</span>
 				{#if app.currentMetadata}
 					<span class="badge badge-{app.currentMetadata.review_status}">
 						{STATUS_LABEL[app.currentMetadata.review_status] ?? app.currentMetadata.review_status}
@@ -234,52 +238,64 @@
 				{/if}
 			</div>
 
-			<!-- image with inline navigation zones -->
-			<div class="image-frame" class:is-zoomed={zoom !== 'fit'}>
+			<!-- viewer body: nav zones + scrollable image area -->
+			<div class="viewer-body">
 				<button
 					class="nav-zone nav-prev"
 					onclick={() => go(-1)}
 					disabled={!hasPrev}
-					aria-label="Previous image"
+					aria-label="Previous item"
 				>
 					<span class="nav-arrow">←</span>
 				</button>
 
-				{#if loadingImage}
-					<span class="spinner"></span>
-				{:else}
-					<img
-						src={imageFileUrl(app.currentImage.id)}
-						alt={app.currentMetadata?.title ?? app.currentImage.filename}
-						class="main-img zoom-{zoom}"
-						onclick={() => zoom = zoom === 'fit' ? '100' : 'fit'}
-					/>
-				{/if}
+				<div
+					class="image-frame"
+					class:is-zoomed={zoom !== 'fit'}
+					class:is-multipage={isMultiPage}
+				>
+					{#if loadingImage}
+						<span class="spinner"></span>
+					{:else if isMultiPage}
+						<div class="page-stack">
+							{#each app.currentItem.pages as page}
+								<img
+									src={imageFileUrl(page.id)}
+									alt="Page {page.page_number}"
+									class="main-img zoom-{zoom}"
+								/>
+							{/each}
+						</div>
+					{:else}
+						<img
+							src={imageFileUrl(app.currentItem.pages[0].id)}
+							alt={app.currentMetadata?.title ?? app.currentItem.item_key}
+							class="main-img zoom-{zoom}"
+							onclick={() => zoom = zoom === 'fit' ? '100' : 'fit'}
+						/>
+					{/if}
+				</div>
 
 				<button
 					class="nav-zone nav-next"
 					onclick={() => go(1)}
 					disabled={!hasNext}
-					aria-label="Next image"
+					aria-label="Next item"
 				>
 					<span class="nav-arrow">→</span>
 				</button>
-
 			</div>
 
 			<!-- system bar -->
 			<div class="viewer-nav">
-				<span class="nav-counter">{app.currentIndex + 1} / {app.total}</span>
+				<span class="nav-counter">
+					{app.currentIndex + 1} / {app.total}
+					{#if isMultiPage}<span class="page-count">· {app.currentItem.pages.length} pp</span>{/if}
+				</span>
 
 				<div class="nav-actions">
-					<button
-						class="viewer-action-btn is-approve"
-						onclick={approve}
-					>Approve</button>
-					<button
-						class="viewer-action-btn is-flag"
-						onclick={flag}
-					>Flag</button>
+					<button class="viewer-action-btn is-approve" onclick={approve}>Approve</button>
+					<button class="viewer-action-btn is-flag"    onclick={flag}>Flag</button>
 				</div>
 
 				<div class="nav-spacer"></div>
@@ -369,7 +385,7 @@
 						></textarea>
 					</div>
 
-					<!-- ── Section: Documentary ── -->
+					<!-- ── Section: Documentation ── -->
 					<div class="section section-documentary">
 						<span class="section-head">Documentation</span>
 
@@ -494,7 +510,7 @@
 		overflow: hidden;
 	}
 
-	/* provenance strip — top register line in royal blue, shared with panel-actions */
+	/* provenance strip */
 	.viewer-strip {
 		height: var(--strip-h);
 		display: flex;
@@ -512,6 +528,12 @@
 		color: var(--c-accent);
 		white-space: nowrap;
 	}
+	.strip-series {
+		font-family: var(--font-mono);
+		font-size: 0.51rem;
+		color: var(--c-muted);
+		white-space: nowrap;
+	}
 	.strip-sep {
 		font-family: var(--font-mono);
 		font-size: 0.51rem;
@@ -527,24 +549,50 @@
 		white-space: nowrap;
 	}
 
-	/* image frame with inline nav zones */
-	.image-frame {
+	/* viewer body: contains nav zones + image frame */
+	.viewer-body {
 		flex: 1;
 		position: relative;
+		display: flex;
+		overflow: hidden;
+	}
+
+	/* image frame */
+	.image-frame {
+		flex: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
 		background: var(--c-viewer-bg);
-		padding: 2.5rem;
+		padding: 2.5rem 7rem; /* 7rem = 96px nav zone + inner breathing */
 	}
-	.is-study .image-frame { padding: 3.5rem; }
+	.is-study .image-frame { padding: 3.5rem 7rem; }
 
-	.image-frame.is-zoomed {
+	/* zoomed single image: both axes scrollable */
+	.image-frame.is-zoomed:not(.is-multipage) {
 		overflow: auto;
 		align-items: flex-start;
 		justify-content: flex-start;
-		cursor: default;
+	}
+
+	/* multi-page: always scroll vertically */
+	.image-frame.is-multipage {
+		overflow-y: auto;
+		align-items: flex-start;
+		justify-content: center;
+	}
+	.image-frame.is-multipage.is-zoomed {
+		overflow: auto;
+		justify-content: flex-start;
+	}
+
+	.page-stack {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2rem;
+		padding: 0.5rem 0 2rem;
 	}
 
 	.main-img {
@@ -557,6 +605,11 @@
 		width: auto;
 		height: auto;
 		cursor: zoom-in;
+	}
+	.is-multipage .zoom-fit {
+		max-width: 100%;
+		max-height: none;
+		cursor: default;
 	}
 	.zoom-100 {
 		width: auto;
@@ -574,8 +627,7 @@
 		cursor: zoom-out;
 	}
 
-
-	/* navigation zones — large invisible hit areas */
+	/* navigation zones — positioned in viewer-body */
 	.nav-zone {
 		position: absolute;
 		top: 0;
@@ -595,9 +647,8 @@
 	.nav-prev { left: 0; }
 	.nav-next { right: 0; }
 	.nav-zone:disabled { opacity: 0; cursor: default; }
-	.image-frame:hover .nav-zone:not(:disabled) { opacity: 1; }
+	.viewer-body:hover .nav-zone:not(:disabled) { opacity: 1; }
 
-	/* royal blue arrow in white box */
 	.nav-arrow {
 		font-size: 1.75rem;
 		color: var(--c-accent);
@@ -627,8 +678,11 @@
 		letter-spacing: 0.08em;
 		min-width: 5ch;
 	}
+	.page-count {
+		color: var(--c-ghost);
+		margin-left: 0.25em;
+	}
 
-	/* approve/flag in viewer nav (for panel-hidden state) */
 	.nav-actions {
 		display: flex;
 		gap: 0.25rem;
@@ -685,7 +739,6 @@
 		white-space: nowrap;
 	}
 
-	/* mode toggle */
 	.mode-toggle {
 		display: flex;
 		border: 1px solid var(--c-border);
@@ -707,10 +760,7 @@
 	}
 	.mode-btn:first-child { border-left: none; }
 	.mode-btn:hover:not(.is-active) { color: var(--c-muted); }
-	.mode-btn.is-active {
-		color: var(--c-text);
-		font-weight: 500;
-	}
+	.mode-btn.is-active { color: var(--c-text); font-weight: 500; }
 
 	.panel-toggle-btn {
 		background: transparent;
@@ -739,7 +789,6 @@
 	}
 	.is-study .meta-panel { width: 260px; }
 
-	/* pinned decision bar — matches viewer-strip height and blue register line exactly */
 	.panel-actions {
 		height: var(--strip-h);
 		display: flex;
@@ -789,7 +838,6 @@
 	.save-btn:hover:not(:disabled) { color: var(--c-text); }
 	.save-btn:disabled { cursor: default; }
 
-	/* scrollable fields — left-heavy column, editorial asymmetry */
 	.meta-scroll {
 		flex: 1;
 		overflow-y: auto;
@@ -798,34 +846,15 @@
 	.meta-scroll::-webkit-scrollbar { width: 3px; }
 	.meta-scroll::-webkit-scrollbar-thumb { background: var(--c-border); }
 
-	/* sections — conceptual chapters with intentional spacing asymmetry */
 	.section {
 		padding: 2.75rem 0 0.25rem;
 		border-top: 1px solid var(--c-border-subtle);
 	}
+	.section-description { border-top: none; padding-top: 2.25rem; }
+	.section-classification { padding-top: 1.25rem; }
+	.section-documentary { padding-top: 4rem; }
+	.section-notes { padding-top: 2.75rem; }
 
-	/* Description: opens the panel — no border, generous breathing */
-	.section-description {
-		border-top: none;
-		padding-top: 2.25rem;
-	}
-
-	/* Classification: tight tab, subordinate chapter */
-	.section-classification {
-		padding-top: 1.25rem;
-	}
-
-	/* Documentary: archive-heavy — maximum breathing before it */
-	.section-documentary {
-		padding-top: 4rem;
-	}
-
-	/* Notes: generous but not as heavy as documentary */
-	.section-notes {
-		padding-top: 2.75rem;
-	}
-
-	/* section head — assertive chapter opener */
 	.section-head {
 		display: block;
 		font-family: var(--font-body);
@@ -837,14 +866,12 @@
 		margin-left: -0.5rem;
 	}
 
-	/* entity/structured fields — subordinate to prose; reference voice */
 	.field-entity {
 		font-size: 0.82rem;
 		font-weight: 400;
 		color: var(--c-text-body);
 	}
 
-	/* OCR / visible text — archival density: mono, tight, small */
 	.field-ocr {
 		font-family: var(--font-mono);
 		font-size: 0.74rem;
@@ -853,7 +880,6 @@
 		color: var(--c-muted);
 	}
 
-	/* study mode: quieter panel */
 	.is-study .section-head      { font-size: 0.9rem; margin-left: -0.25rem; }
 	.is-study .field-input       { font-size: 0.78rem; }
 	.is-study .field-textarea    { font-size: 0.78rem; }
@@ -899,7 +925,6 @@
 		cursor: pointer;
 	}
 
-	/* generic action button (revise submit) */
 	.action-btn {
 		background: transparent;
 		border: 1px solid var(--c-border);

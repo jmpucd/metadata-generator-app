@@ -1,6 +1,5 @@
 """
 app/db/crud.py — all database read/write operations.
-Keep business logic out of here; this is a thin data-access layer.
 """
 from __future__ import annotations
 
@@ -11,7 +10,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.db.schema import Collection, Image, MetadataRecord, RevisionHistory
+from app.db.schema import Collection, Item, Image, MetadataRecord, RevisionHistory
 
 
 # ── Collections ───────────────────────────────────────────────────────────────
@@ -43,41 +42,69 @@ def get_collection_by_name(db: Session, name: str) -> Optional[Collection]:
     return db.query(Collection).filter_by(name=name).first()
 
 
-# ── Images ────────────────────────────────────────────────────────────────────
+# ── Items ─────────────────────────────────────────────────────────────────────
 
-def ingest_image(db: Session, filepath: str, collection_id: int, file_hash: str = "") -> Image:
-    """Add an image record if it doesn't already exist (idempotent by filepath)."""
-    existing = db.query(Image).filter_by(filepath=filepath).first()
-    if existing:
-        return existing
-    img = Image(
+def ingest_item(
+    db: Session,
+    collection_id: int,
+    item_key: str,
+    pages: list[tuple[str, int]],  # [(filepath, page_number), ...]
+    series: str = "",
+    folder_path: Optional[str] = None,
+) -> Item:
+    """Create an Item and its pages. Idempotent: skips if first page already ingested."""
+    if pages:
+        existing = db.query(Image).filter_by(filepath=pages[0][0]).first()
+        if existing and existing.item_id:
+            return db.get(Item, existing.item_id)
+
+    item = Item(
         collection_id=collection_id,
-        filename=Path(filepath).name,
-        filepath=filepath,
-        file_hash=file_hash,
+        series=series,
+        item_key=item_key,
+        folder_path=folder_path,
     )
-    db.add(img)
+    db.add(item)
+    db.flush()
+
+    for filepath, page_num in pages:
+        existing = db.query(Image).filter_by(filepath=filepath).first()
+        if existing:
+            existing.item_id = item.id
+            existing.page_number = page_num
+        else:
+            db.add(Image(
+                collection_id=collection_id,
+                item_id=item.id,
+                page_number=page_num,
+                filename=Path(filepath).name,
+                filepath=filepath,
+            ))
+
+    db.add(MetadataRecord(item_id=item.id, review_status="needs_review"))
     db.commit()
-    db.refresh(img)
-    # Create an empty metadata record immediately
-    rec = MetadataRecord(image_id=img.id, review_status="needs_review")
-    db.add(rec)
-    db.commit()
-    return img
+    db.refresh(item)
+    return item
 
 
-def list_images(
+def list_items(
     db: Session,
     collection_id: Optional[int] = None,
     status: Optional[str] = None,
-) -> list[Image]:
-    q = db.query(Image)
+) -> list[Item]:
+    q = db.query(Item)
     if collection_id:
-        q = q.filter(Image.collection_id == collection_id)
+        q = q.filter(Item.collection_id == collection_id)
     if status:
         q = q.join(MetadataRecord).filter(MetadataRecord.review_status == status)
-    return q.order_by(Image.ingested_at).all()
+    return q.order_by(Item.created_at).all()
 
+
+def get_item(db: Session, item_id: int) -> Optional[Item]:
+    return db.get(Item, item_id)
+
+
+# ── Images (file serving only) ────────────────────────────────────────────────
 
 def get_image(db: Session, image_id: int) -> Optional[Image]:
     return db.get(Image, image_id)
@@ -85,20 +112,20 @@ def get_image(db: Session, image_id: int) -> Optional[Image]:
 
 # ── Metadata records ──────────────────────────────────────────────────────────
 
-def get_metadata(db: Session, image_id: int) -> Optional[MetadataRecord]:
-    return db.query(MetadataRecord).filter_by(image_id=image_id).first()
+def get_metadata(db: Session, item_id: int) -> Optional[MetadataRecord]:
+    return db.query(MetadataRecord).filter_by(item_id=item_id).first()
 
 
-def upsert_metadata(db: Session, image_id: int, fields: dict) -> MetadataRecord:
-    """Write metadata fields to the DB and snapshot to history."""
-    rec = get_metadata(db, image_id)
+def upsert_metadata(db: Session, item_id: int, fields: dict) -> MetadataRecord:
+    rec = get_metadata(db, item_id)
     if rec is None:
-        rec = MetadataRecord(image_id=image_id)
+        rec = MetadataRecord(item_id=item_id)
         db.add(rec)
 
     tag_fields = {"subjects", "people", "places", "objects"}
-    skip_fields = {"id", "image_id", "review_status", "draft_generated",
+    skip_fields = {"id", "item_id", "image_id", "review_status", "draft_generated",
                    "last_revised_at", "approved_at", "approved_by"}
+
     for key, value in fields.items():
         if key in skip_fields:
             continue
@@ -117,8 +144,8 @@ def upsert_metadata(db: Session, image_id: int, fields: dict) -> MetadataRecord:
     return rec
 
 
-def set_review_status(db: Session, image_id: int, status: str) -> MetadataRecord:
-    rec = get_metadata(db, image_id)
+def set_review_status(db: Session, item_id: int, status: str) -> MetadataRecord:
+    rec = get_metadata(db, item_id)
     rec.review_status = status
     if status == "approved":
         rec.approved_at = datetime.datetime.utcnow()
@@ -127,8 +154,8 @@ def set_review_status(db: Session, image_id: int, status: str) -> MetadataRecord
     return rec
 
 
-def mark_draft_generated(db: Session, image_id: int) -> None:
-    rec = get_metadata(db, image_id)
+def mark_draft_generated(db: Session, item_id: int) -> None:
+    rec = get_metadata(db, item_id)
     rec.draft_generated = True
     rec.review_status = "needs_review"
     db.commit()
@@ -138,15 +165,15 @@ def mark_draft_generated(db: Session, image_id: int) -> None:
 
 def snapshot_revision(
     db: Session,
-    image_id: int,
+    item_id: int,
     revision_type: str,
     feedback: Optional[str] = None,
     revised_by: str = "system",
 ) -> RevisionHistory:
-    rec = get_metadata(db, image_id)
+    rec = get_metadata(db, item_id)
     snap = rec.to_dict() if rec else {}
     entry = RevisionHistory(
-        image_id=image_id,
+        item_id=item_id,
         revision_type=revision_type,
         metadata_snapshot=json.dumps(snap),
         feedback_given=feedback,
@@ -158,10 +185,10 @@ def snapshot_revision(
     return entry
 
 
-def get_revision_history(db: Session, image_id: int) -> list[RevisionHistory]:
+def get_revision_history(db: Session, item_id: int) -> list[RevisionHistory]:
     return (
         db.query(RevisionHistory)
-        .filter_by(image_id=image_id)
+        .filter_by(item_id=item_id)
         .order_by(RevisionHistory.revised_at.desc())
         .all()
     )
@@ -170,11 +197,11 @@ def get_revision_history(db: Session, image_id: int) -> list[RevisionHistory]:
 # ── Export helpers ────────────────────────────────────────────────────────────
 
 def get_approved_records(db: Session, collection_id: Optional[int] = None):
-    """Return (Image, MetadataRecord) pairs for all approved images."""
-    q = db.query(Image, MetadataRecord).join(MetadataRecord)
+    """Return (Item, MetadataRecord) pairs for all approved items."""
+    q = db.query(Item, MetadataRecord).join(MetadataRecord)
     q = q.filter(MetadataRecord.review_status == "approved")
     if collection_id:
-        q = q.filter(Image.collection_id == collection_id)
+        q = q.filter(Item.collection_id == collection_id)
     return q.all()
 
 
@@ -182,8 +209,8 @@ def get_approved_records(db: Session, collection_id: Optional[int] = None):
 
 def status_counts(db: Session, collection_id: Optional[int] = None) -> dict:
     from sqlalchemy import func
-    q = db.query(MetadataRecord.review_status, func.count()).join(Image)
+    q = db.query(MetadataRecord.review_status, func.count()).join(Item)
     if collection_id:
-        q = q.filter(Image.collection_id == collection_id)
+        q = q.filter(Item.collection_id == collection_id)
     rows = q.group_by(MetadataRecord.review_status).all()
     return {status: count for status, count in rows}

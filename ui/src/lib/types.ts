@@ -12,19 +12,26 @@ export interface Collection {
 	created_at: string;
 }
 
-export interface ImageEntry {
+export interface Page {
 	id: number;
 	filename: string;
 	filepath: string;
+	page_number: number;
+}
+
+export interface ItemEntry {
+	id: number;
 	collection_id: number;
-	ingested_at: string;
+	series: string;
+	item_key: string;
 	status: string;
 	draft_generated: boolean;
+	pages: Page[];
 }
 
 export interface MetadataRecord {
 	id: number;
-	image_id: number;
+	item_id: number;
 	title: string | null;
 	description: string | null;
 	visible_text: string | null;

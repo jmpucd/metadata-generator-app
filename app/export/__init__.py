@@ -16,16 +16,19 @@ from app.config import EXPORTS_DIR
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-def _record_to_flat(image, rec) -> dict:
-    """Flatten an (Image, MetadataRecord) pair into a plain dict."""
+def _record_to_flat(item, rec) -> dict:
+    """Flatten an (Item, MetadataRecord) pair into a plain dict."""
     d = rec.to_dict()
-    # Convert lists to pipe-separated strings for CSV compatibility
     for key in ("subjects", "people", "places", "objects"):
         val = d.get(key, [])
         if isinstance(val, list):
             d[key] = " | ".join(val)
-    d["filename"] = image.filename
-    d["filepath"] = image.filepath
+    rep = item.pages[0] if item.pages else None
+    d["item_key"] = item.item_key
+    d["series"] = item.series or ""
+    d["filename"] = rep.filename if rep else ""
+    d["filepath"] = rep.filepath if rep else ""
+    d["page_count"] = len(item.pages)
     return d
 
 
@@ -38,11 +41,14 @@ def export_json(records: list, output_path: Path | None = None) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     data = []
-    for image, rec in records:
+    for item, rec in records:
         entry = rec.to_dict()
-        entry["filename"] = image.filename
-        entry["filepath"] = image.filepath
-        # Keep list fields as actual lists
+        rep = item.pages[0] if item.pages else None
+        entry["item_key"] = item.item_key
+        entry["series"] = item.series or ""
+        entry["filename"] = rep.filename if rep else ""
+        entry["filepath"] = rep.filepath if rep else ""
+        entry["page_count"] = len(item.pages)
         for key in ("subjects", "people", "places", "objects"):
             entry[key] = rec.get_tags(key)
         data.append(entry)
@@ -61,7 +67,7 @@ def export_csv(records: list, output_path: Path | None = None) -> Path:
         output_path = EXPORTS_DIR / "approved_metadata.csv"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = [_record_to_flat(img, rec) for img, rec in records]
+    rows = [_record_to_flat(item, rec) for item, rec in records]
     if not rows:
         output_path.write_text("(no approved records)\n")
         return output_path
@@ -89,8 +95,11 @@ def export_xmp(records: list, output_dir: Path | None = None) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     written = []
-    for image, rec in records:
-        img_path = Path(image.filepath)
+    for item, rec in records:
+        rep = item.pages[0] if item.pages else None
+        if not rep:
+            continue
+        img_path = Path(rep.filepath)
         sidecar_path = output_dir / (img_path.stem + ".xmp")
 
         tags = rec.get_tags

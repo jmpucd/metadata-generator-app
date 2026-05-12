@@ -5,6 +5,8 @@ Run via: python -m app.cli db-check
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from sqlalchemy import inspect, text
 
 from app.db.schema import Base, get_engine
@@ -12,13 +14,14 @@ from app.db.schema import Base, get_engine
 
 def check_and_migrate(verbose: bool = True) -> list[str]:
     """
-    Inspect the live DB and add any missing columns that exist in the ORM models.
+    Inspect the live DB, add missing tables/columns, and run data migrations.
     Returns a list of actions taken.
     """
     engine = get_engine()
     inspector = inspect(engine)
     actions: list[str] = []
 
+    # Phase 1: create missing tables and add missing columns
     for table in Base.metadata.sorted_tables:
         table_name = table.name
         if not inspector.has_table(table_name):
@@ -31,7 +34,6 @@ def check_and_migrate(verbose: bool = True) -> list[str]:
         existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
         for col in table.columns:
             if col.name not in existing_cols:
-                # Build a simple ALTER TABLE statement
                 col_type = col.type.compile(engine.dialect)
                 nullable = "" if col.nullable else " NOT NULL"
                 default = ""
@@ -40,7 +42,10 @@ def check_and_migrate(verbose: bool = True) -> list[str]:
                     if isinstance(val, str):
                         val = f"'{val}'"
                     default = f" DEFAULT {val}"
-                stmt = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}{default}{nullable}"
+                stmt = (
+                    f"ALTER TABLE {table_name} ADD COLUMN "
+                    f"{col.name} {col_type}{default}{nullable}"
+                )
                 with engine.connect() as conn:
                     conn.execute(text(stmt))
                     conn.commit()
@@ -49,7 +54,61 @@ def check_and_migrate(verbose: bool = True) -> list[str]:
                 if verbose:
                     print(f"  ✚ {msg}")
 
+    # Phase 2: wrap legacy image rows that have no item_id into Item records
+    with engine.connect() as conn:
+        # images table must exist before we query it
+        if inspector.has_table("images"):
+            result = conn.execute(
+                text("SELECT COUNT(*) FROM images WHERE item_id IS NULL")
+            ).scalar()
+            if result and result > 0:
+                if verbose:
+                    print(f"  ✚ Migrating {result} legacy image(s) to item records…")
+                _migrate_images_to_items(conn, verbose)
+                actions.append(f"migrated_legacy_images:{result}")
+
     if not actions and verbose:
         print("  ✔ Schema is up to date — no changes needed.")
 
     return actions
+
+
+def _migrate_images_to_items(conn, verbose: bool) -> None:
+    """Create one Item per legacy Image and rewire metadata_records / revision_history."""
+    images = conn.execute(
+        text("SELECT id, collection_id, filename, filepath FROM images WHERE item_id IS NULL ORDER BY id")
+    ).fetchall()
+
+    for img_id, coll_id, filename, filepath in images:
+        item_key = Path(filepath).stem if filepath else str(img_id)
+
+        conn.execute(
+            text(
+                "INSERT INTO items (collection_id, series, item_key, folder_path, created_at) "
+                "VALUES (:coll_id, '', :item_key, NULL, datetime('now'))"
+            ),
+            {"coll_id": coll_id, "item_key": item_key},
+        )
+        item_id = conn.execute(text("SELECT last_insert_rowid()")).scalar()
+
+        conn.execute(
+            text("UPDATE images SET item_id = :item_id, page_number = 1 WHERE id = :img_id"),
+            {"item_id": item_id, "img_id": img_id},
+        )
+
+        # metadata_records still has the legacy image_id column — update by that
+        conn.execute(
+            text("UPDATE metadata_records SET item_id = :item_id WHERE image_id = :img_id"),
+            {"item_id": item_id, "img_id": img_id},
+        )
+
+        # revision_history same
+        conn.execute(
+            text("UPDATE revision_history SET item_id = :item_id WHERE image_id = :img_id"),
+            {"item_id": item_id, "img_id": img_id},
+        )
+
+        if verbose:
+            print(f"    → image {img_id} ({filename}) → item {item_id}")
+
+    conn.commit()
