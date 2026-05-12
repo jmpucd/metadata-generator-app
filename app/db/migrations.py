@@ -89,6 +89,68 @@ def check_and_migrate(verbose: bool = True) -> list[str]:
                         print(f"  ✚ {msg}")
             conn.commit()
 
+    # Phase 4: make legacy image_id columns nullable (SQLite table rebuild)
+    _nullable_targets = {
+        "revision_history": (
+            "CREATE TABLE _rh_fix ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "item_id INTEGER REFERENCES items(id),"
+            "image_id INTEGER,"
+            "revision_type VARCHAR(50) NOT NULL,"
+            "metadata_snapshot TEXT NOT NULL,"
+            "feedback_given TEXT,"
+            "revised_by VARCHAR(100) NOT NULL DEFAULT 'system',"
+            "revised_at DATETIME NOT NULL"
+            ")"
+        ),
+        "metadata_records": (
+            "CREATE TABLE _mr_fix ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "item_id INTEGER REFERENCES items(id),"
+            "image_id INTEGER,"
+            "title TEXT,"
+            "description TEXT,"
+            "visible_text TEXT,"
+            "subjects TEXT,"
+            "people TEXT,"
+            "places TEXT,"
+            "dates VARCHAR(200),"
+            "objects TEXT,"
+            "uncertainty_notes TEXT,"
+            "reviewer_notes TEXT,"
+            "review_status VARCHAR(50) NOT NULL DEFAULT 'queue',"
+            "draft_generated BOOLEAN NOT NULL DEFAULT 0,"
+            "last_revised_at DATETIME,"
+            "approved_at DATETIME,"
+            "approved_by VARCHAR(200)"
+            ")"
+        ),
+    }
+    _fix_cols = {
+        "revision_history": "id,item_id,image_id,revision_type,metadata_snapshot,feedback_given,revised_by,revised_at",
+        "metadata_records": "id,item_id,image_id,title,description,visible_text,subjects,people,places,dates,objects,uncertainty_notes,reviewer_notes,review_status,draft_generated,last_revised_at,approved_at,approved_by",
+    }
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        for tbl, create_sql in _nullable_targets.items():
+            if not inspector.has_table(tbl):
+                continue
+            existing_cols = {c["name"]: c for c in inspector.get_columns(tbl)}
+            img_col = existing_cols.get("image_id")
+            if img_col and not img_col.get("nullable", True):
+                if verbose:
+                    print(f"  ✚ Fixing NOT NULL image_id in {tbl}…")
+                tmp = "_rh_fix" if tbl == "revision_history" else "_mr_fix"
+                cols = _fix_cols[tbl]
+                conn.execute(text(create_sql))
+                conn.execute(text(f"INSERT INTO {tmp} ({cols}) SELECT {cols} FROM {tbl}"))
+                conn.execute(text(f"DROP TABLE {tbl}"))
+                conn.execute(text(f"ALTER TABLE {tmp} RENAME TO {tbl}"))
+                conn.commit()
+                actions.append(f"fixed_nullable_image_id:{tbl}")
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+        conn.commit()
+
     if not actions and verbose:
         print("  ✔ Schema is up to date — no changes needed.")
 

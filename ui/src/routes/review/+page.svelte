@@ -57,9 +57,9 @@
 			dirty = false;
 			if (meta.review_status === 'queue') {
 				await setStatus(itemId, 'working');
-				meta.review_status = 'working';
+				app.currentMetadata = { ...meta, review_status: 'working' };
 				const item = app.items.find(i => i.id === itemId);
-				if (item) item.status = 'in_progress';
+				if (item) item.status = 'working';
 			}
 		} finally {
 			loadingImage = false;
@@ -120,26 +120,30 @@
 		app.currentIndex = next;
 	}
 
+	async function setStatusAndSync(next: string) {
+		const item = app.currentItem;
+		if (!item) return;
+		await setStatus(item.id, next);
+		const meta = await getMetadata(item.id);
+		app.currentMetadata = meta;
+		item.status = meta.review_status;
+	}
+
 	async function approve() {
 		const item = app.currentItem;
 		if (!item) return;
-		const current = app.currentMetadata?.review_status;
+		const current = app.currentMetadata?.review_status ?? item.status;
 		const next = current === 'ready' ? 'working' : 'ready';
-		await setStatus(item.id, next);
-		item.status = next;
-		if (app.currentMetadata) app.currentMetadata.review_status = next;
+		await setStatusAndSync(next);
 		if (app.selectedCollectionId !== null) app.stats = await getStats(app.selectedCollectionId);
-		if (next === 'ready') go(1);
 	}
 
 	async function flag() {
 		const item = app.currentItem;
 		if (!item) return;
-		const current = app.currentMetadata?.review_status;
+		const current = app.currentMetadata?.review_status ?? item.status;
 		const next = current === 'hold' ? 'working' : 'hold';
-		await setStatus(item.id, next);
-		item.status = next;
-		if (app.currentMetadata) app.currentMetadata.review_status = next;
+		await setStatusAndSync(next);
 	}
 
 	async function submitRevise() {

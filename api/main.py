@@ -18,6 +18,12 @@ from api.routes import collections, images, metadata, status, revise, export
 
 app = FastAPI(title="Metadata Review API", version="1.0.0")
 
+
+@app.on_event("startup")
+def _run_migrations():
+    from app.db.migrations import check_and_migrate
+    check_and_migrate(verbose=False)
+
 # Allow the SvelteKit dev server (port 5173) and any localhost origin to
 # call the API without CORS errors during development.
 app.add_middleware(
