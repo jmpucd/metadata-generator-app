@@ -23,6 +23,19 @@ node_modules/
 ui/build/
 ui/.svelte-kit/
 
+# Logs
+*.log
+
+# Vite cache
+.vite/
+
+# Root-level database files
+*.db
+
+# Screenshots and session notes
+*.png
+session_*.md
+
 # Editor/OS
 .DS_Store
 *.swp
