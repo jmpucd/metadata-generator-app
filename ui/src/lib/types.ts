@@ -58,9 +58,9 @@ export interface RevisionEntry {
 }
 
 export interface StatusCounts {
-	needs_review?: number;
-	in_progress?: number;
-	revised?: number;
-	approved?: number;
-	flagged?: number;
+	queue?: number;
+	working?: number;
+	ready?: number;
+	hold?: number;
+	exported?: number;
 }

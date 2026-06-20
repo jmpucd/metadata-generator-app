@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
-	import { createCollection, updateCollection, getCollections } from '$lib/api';
+	import { createCollection, updateCollection, getCollections, generateCollection } from '$lib/api';
 	import type { Collection } from '$lib/types';
 
 	type Mode = 'view' | 'edit' | 'new';
 	let mode = $state<Mode>('view');
 	let saving = $state(false);
+	let generating = $state(false);
+	let generateMsg = $state('');
 	let error = $state('');
 
 	// form fields
@@ -46,6 +48,23 @@
 	}
 
 	function cancel() { mode = 'view'; error = ''; }
+
+	async function submitAndGenerate() {
+		await submit();
+		if (error) return;
+		const id = app.selectedCollectionId;
+		if (id === null) return;
+		generating = true;
+		generateMsg = '';
+		try {
+			await generateCollection(id);
+			generateMsg = 'Generation started — check the Review page for results.';
+		} catch {
+			generateMsg = 'Saved, but failed to start generation.';
+		} finally {
+			generating = false;
+		}
+	}
 
 	async function submit() {
 		if (!name.trim()) { error = 'Name is required.'; return; }
@@ -165,16 +184,28 @@
 
 			<div class="form-actions">
 				<button class="btn-ghost" onclick={cancel}>Cancel</button>
-				<button class="btn-ghost active" onclick={submit} disabled={saving}>
+				<button class="btn-ghost active" onclick={submit} disabled={saving || generating}>
 					{saving ? 'Saving…' : 'Save'}
 				</button>
+				{#if mode === 'edit'}
+				<button class="btn-ghost active" onclick={submitAndGenerate} disabled={saving || generating}>
+					{generating ? 'Starting…' : 'Save & Regenerate'}
+				</button>
+				{/if}
 			</div>
+			{#if generateMsg}<p class="generate-msg">{generateMsg}</p>{/if}
 		{/if}
 
 	</div>
 </div>
 
 <style>
+	.generate-msg {
+		font-size: 0.8rem;
+		opacity: 0.7;
+		margin-top: 0.5rem;
+	}
+
 	.setup-page {
 		height: 100vh;
 		overflow-y: auto;

@@ -49,8 +49,13 @@ def health():
 
 @app.get("/api/config")
 def config():
-    from app.config import MODEL_BACKEND, OLLAMA_MODEL
-    model = OLLAMA_MODEL if MODEL_BACKEND == "ollama" else MODEL_BACKEND
+    from app.config import MODEL_BACKEND, OLLAMA_MODEL, VLLM_MODEL
+    if MODEL_BACKEND == "ollama":
+        model = OLLAMA_MODEL
+    elif MODEL_BACKEND == "vllm":
+        model = VLLM_MODEL
+    else:
+        model = MODEL_BACKEND
     return {"backend": MODEL_BACKEND, "model": model}
 
 

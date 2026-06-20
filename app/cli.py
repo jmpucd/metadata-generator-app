@@ -77,26 +77,25 @@ def ingest(
 
     items_to_ingest: list[tuple[str, str, Optional[str], list[tuple[str, int]]]] = []
 
-    if subdirs:
-        # Each sub-folder is a multi-page item
-        for subdir in subdirs:
-            pages = flat_images(subdir)
-            if pages:
-                items_to_ingest.append((
-                    subdir.name,
-                    series,
-                    str(subdir),
-                    [(str(p), i + 1) for i, p in enumerate(pages)],
-                ))
-    elif flat:
-        # Each image is its own single-page item
-        for img_path in flat:
+    # Each sub-folder is a multi-page item
+    for subdir in subdirs:
+        pages = flat_images(subdir)
+        if pages:
             items_to_ingest.append((
-                img_path.stem,
+                subdir.name,
                 series,
-                None,
-                [(str(img_path), 1)],
+                str(subdir),
+                [(str(p), i + 1) for i, p in enumerate(pages)],
             ))
+
+    # Each flat image is its own single-page item
+    for img_path in flat:
+        items_to_ingest.append((
+            img_path.stem,
+            series,
+            None,
+            [(str(img_path), 1)],
+        ))
 
     if not items_to_ingest:
         rprint("[yellow]No images found.[/yellow]")
@@ -129,7 +128,7 @@ def generate(
 ):
     """Generate draft metadata for items using the local VLM."""
     from app.db.crud import (
-        get_collection_by_name, list_items, get_metadata,
+        get_collection_by_name, list_items, get_item_by_key, get_metadata,
         upsert_metadata, mark_draft_generated, snapshot_revision,
     )
     from app.models.local_vlm import generate_metadata
@@ -171,10 +170,23 @@ def generate(
                 rprint(f"[yellow]  ⚠ {item.item_key}: no pages, skipping[/yellow]")
                 progress.advance(task)
                 continue
-            rep = item.pages[0]  # representative page for VLM
+            all_pages = [p.filepath for p in item.pages]
             progress.update(task, description=item.item_key)
+
+            # Build item-specific context; detect verso pages
+            item_ctx = dict(session_ctx)
+            if "_verso" in item.item_key.lower():
+                # Derive recto key by replacing _verso (any case) with _recto
+                key_lower = item.item_key.lower()
+                recto_key = item.item_key[: key_lower.index("_verso")] + "_recto" + item.item_key[key_lower.index("_verso") + len("_verso"):]
+                recto_item = get_item_by_key(db, coll.id, recto_key)
+                recto_meta = get_metadata(db, recto_item.id) if recto_item else None
+                item_ctx["is_verso"] = True
+                item_ctx["recto_title"] = (recto_meta.title or "") if recto_meta else ""
+                item_ctx["recto_description"] = (recto_meta.description or "") if recto_meta else ""
+
             try:
-                fields = generate_metadata(rep.filepath, session_ctx)
+                fields = generate_metadata(all_pages, item_ctx)
                 upsert_metadata(db, item.id, fields)
                 mark_draft_generated(db, item.id)
                 snapshot_revision(db, item.id, "draft")

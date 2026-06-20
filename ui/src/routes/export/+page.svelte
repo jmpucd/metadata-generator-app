@@ -2,7 +2,7 @@
 	import { app } from '$lib/state.svelte';
 	import { exportUrl, getStats } from '$lib/api';
 
-	const approvedCount = $derived(app.stats.approved ?? 0);
+	const approvedCount = $derived(app.stats.ready ?? 0);
 
 	function download(format: 'csv' | 'json') {
 		if (!app.selectedCollectionId) return;

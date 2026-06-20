@@ -32,11 +32,16 @@
 		const colId  = app.selectedCollectionId;
 		const filter = app.statusFilter;
 		if (colId === null) return;
+		const key = `${colId}:${filter}`;
 		getItems(colId, filter).then(items => {
+			const changed = key !== app.itemsKey;
 			app.items = items;
-			app.currentIndex = 0;
-			if (items.length) loadMeta(items[0].id);
-			else app.currentMetadata = null;
+			app.itemsKey = key;
+			if (changed) {
+				app.currentIndex = 0;
+				if (items.length) loadMeta(items[0].id);
+				else app.currentMetadata = null;
+			}
 		});
 	});
 
@@ -532,7 +537,7 @@
 	}
 	.strip-col {
 		font-family: var(--font-mono);
-		font-size: 0.51rem;
+		font-size: 0.64rem;
 		letter-spacing: 0.18em;
 		text-transform: uppercase;
 		color: var(--c-accent);
@@ -540,18 +545,18 @@
 	}
 	.strip-series {
 		font-family: var(--font-mono);
-		font-size: 0.51rem;
+		font-size: 0.64rem;
 		color: var(--c-muted);
 		white-space: nowrap;
 	}
 	.strip-sep {
 		font-family: var(--font-mono);
-		font-size: 0.51rem;
+		font-size: 0.64rem;
 		color: var(--c-ghost-lt);
 	}
 	.strip-file {
 		font-family: var(--font-mono);
-		font-size: 0.52rem;
+		font-size: 0.65rem;
 		color: var(--c-muted);
 		flex: 1;
 		overflow: hidden;
@@ -815,7 +820,7 @@
 		background: transparent;
 		border: 1px solid var(--c-border);
 		font-family: var(--font-body);
-		font-size: 0.68rem;
+		font-size: 0.85rem;
 		font-weight: 400;
 		color: var(--c-muted);
 		padding: 0.28rem 0.85rem;
@@ -836,7 +841,7 @@
 		background: transparent;
 		border: none;
 		font-family: var(--font-mono);
-		font-size: 0.47rem;
+		font-size: 0.59rem;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--c-ghost-lt);
@@ -911,14 +916,14 @@
 	}
 	.footer-label {
 		font-family: var(--font-mono);
-		font-size: 0.44rem;
+		font-size: 0.55rem;
 		letter-spacing: 0.24em;
 		text-transform: uppercase;
 		color: var(--c-accent);
 	}
 	.footer-model {
 		font-family: var(--font-mono);
-		font-size: 0.44rem;
+		font-size: 0.55rem;
 		letter-spacing: 0.06em;
 		color: var(--c-ghost);
 	}

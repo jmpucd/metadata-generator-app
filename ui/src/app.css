@@ -64,7 +64,7 @@ textarea, input { font-family: inherit; }
 
 .sidebar-brand {
 	font-family: var(--font-mono);
-	font-size: 0.55rem;
+	font-size: 0.69rem;
 	letter-spacing: 0.2em;
 	text-transform: uppercase;
 	color: var(--c-accent);
@@ -80,7 +80,7 @@ textarea, input { font-family: inherit; }
 .sidebar-label {
 	display: block;
 	font-family: var(--font-mono);
-	font-size: 0.54rem;
+	font-size: 0.68rem;
 	letter-spacing: 0.18em;
 	text-transform: uppercase;
 	color: var(--c-accent);
@@ -95,7 +95,7 @@ textarea, input { font-family: inherit; }
 	border-bottom: 1px solid var(--c-border);
 	border-radius: 0;
 	font-family: var(--font-body);
-	font-size: 0.78rem;
+	font-size: 0.98rem;
 	font-weight: 300;
 	color: var(--c-text-body);
 	padding: 0.15rem 0 0.3rem;
@@ -118,14 +118,14 @@ textarea, input { font-family: inherit; }
 }
 .count-label {
 	font-family: var(--font-mono);
-	font-size: 0.52rem;
+	font-size: 0.65rem;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
 	color: var(--c-accent);
 }
 .count-val {
 	font-family: var(--font-mono);
-	font-size: 0.55rem;
+	font-size: 0.69rem;
 	color: var(--c-ghost-lt);
 	letter-spacing: 0.04em;
 }
@@ -139,7 +139,7 @@ textarea, input { font-family: inherit; }
 }
 .sidebar-nav a {
 	font-family: var(--font-body);
-	font-size: 0.72rem;
+	font-size: 0.90rem;
 	font-weight: 300;
 	color: var(--c-ghost);
 	padding: 0.4rem 0;

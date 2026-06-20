@@ -10,6 +10,7 @@ class AppState {
 	currentMetadata: MetadataRecord | null = $state(null);
 
 	stats: StatusCounts = $state({});
+	itemsKey: string = $state('');
 
 	saving: boolean = $state(false);
 	revising: boolean = $state(false);

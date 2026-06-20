@@ -83,5 +83,8 @@ export const getConfig = () =>
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
+export const generateCollection = (id: number) =>
+	req<{ status: string; collection: string }>(`/collections/${id}/generate`, { method: 'POST' });
+
 export const exportUrl = (collectionId: number, format: 'csv' | 'json' = 'csv') =>
 	`${BASE}/collections/${collectionId}/export?format=${format}`;

@@ -104,6 +104,10 @@ def get_item(db: Session, item_id: int) -> Optional[Item]:
     return db.get(Item, item_id)
 
 
+def get_item_by_key(db: Session, collection_id: int, item_key: str) -> Optional[Item]:
+    return db.query(Item).filter_by(collection_id=collection_id, item_key=item_key).first()
+
+
 # ── Images (file serving only) ────────────────────────────────────────────────
 
 def get_image(db: Session, image_id: int) -> Optional[Image]:

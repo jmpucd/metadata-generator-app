@@ -22,7 +22,7 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # ── Local VLM settings ─────────────────────────────────────────────────────────
 # Change MODEL_BACKEND to "ollama" or "mock" to swap the backend without
 # touching any other code.
-MODEL_BACKEND: str = os.getenv("MODEL_BACKEND", "ollama")  # qwen_vl | ollama | mock
+MODEL_BACKEND: str = os.getenv("MODEL_BACKEND", "ollama")  # qwen_vl | ollama | vllm | mock
 
 # Qwen-VL
 QWEN_MODEL_ID: str = os.getenv("QWEN_MODEL_ID", "Qwen/Qwen2-VL-7B-Instruct")
@@ -32,6 +32,15 @@ QWEN_DEVICE: str = os.getenv("QWEN_DEVICE", "cpu")           # "cuda" if you hav
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "https://samwise.library.ucdavis.edu/ollama")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5vl:32b")
 OLLAMA_TOKEN: str = os.getenv("OLLAMA_TOKEN", "")
+
+# vLLM backend (OpenAI-compatible). Base URL has NO /v1 (the client appends
+# /v1/chat/completions). Model must be the exact served id (curl <base>/v1/models).
+VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://cyberdyne01.library.ucdavis.edu:30804")
+VLLM_MODEL: str = os.getenv("VLLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+VLLM_TOKEN: str = os.getenv("VLLM_TOKEN", "")
+VLLM_IMAGE_MAX_PX: int = int(os.getenv("VLLM_IMAGE_MAX_PX", "1024"))
+
+PROMPT_STYLE: str = os.getenv("PROMPT_STYLE", "full")  # full | minimal
 
 # Claude API backend
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

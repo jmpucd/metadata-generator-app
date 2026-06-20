@@ -74,10 +74,59 @@ def _build_generate_prompt(session_context: dict) -> str:
         "- objects: list specific named objects visible in the image.",
         "- people: describe visible individuals by role, apparent age, clothing, or other observable characteristics — do not name unless a name is visible.",
         "- places: include specific location if identifiable from signage or context; otherwise describe the type of space.",
+        "- visible_text: Transcribe all visible text exactly as it appears. For foreign-language text, add an inline translation immediately after in brackets: 原文 [translation: English meaning]. If the translation is uncertain, use [translation?: probable meaning] and also note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
         "- If you are uncertain about any value, note it in uncertainty_notes.",
         "- reviewer_notes: add any archival observations about approximate date, context, or significance that a cataloguer would find useful.",
         "- Return ONLY the JSON object — no markdown fences, no explanation.",
     ]
+    return "\n".join(lines)
+
+
+def _build_verso_prompt(session_context: dict) -> str:
+    ctx = session_context
+    field_list = "\n".join(
+        f'  "{f["key"]}": "<value or empty string>"'
+        for f in METADATA_FIELDS
+    )
+    recto_title = ctx.get("recto_title", "")
+    recto_description = ctx.get("recto_description", "")
+    lines = [
+        "You are a library metadata specialist analysing the VERSO (back side) of a photograph for a digital archive.",
+        "",
+    ]
+    if ctx.get("collection_name"):
+        lines.append(f"Collection: {ctx['collection_name']}")
+    if recto_title:
+        lines.append(f"The front (recto) of this item is titled: \"{recto_title}\"")
+    if recto_description:
+        lines.append(f"Front side description: {recto_description}")
+    lines += [
+        "",
+        "This image shows the BACK SIDE of the photograph above.",
+        "",
+        "Examine the back carefully and return ONLY a valid JSON object with these keys:",
+        "{",
+        field_list,
+        "}",
+        "",
+        "Guidelines:",
+        "- title: Use EXACTLY this format: 'Verso: back side of item depicting [3-7 word summary from the front description]'. If no front description is available, summarise what can be inferred.",
+        "- description: Describe the physical condition of the back. Note any discoloration, foxing, water damage, yellowing, stains, fading, or paper texture. If blank, state that clearly.",
+        "- visible_text: Transcribe text visible on the back verbatim. For clearly legible text, transcribe as-is. For partially legible text, use the format '[?best guess]' (e.g. '[?Fujicolor]'). Use '[illegible]' only when no reading is possible at all. Use empty string if there is no text. For any foreign-language text, add an inline translation immediately after in brackets: 原文 [translation: English meaning]. If the translation is uncertain, use [translation?: probable meaning] and also note it in uncertainty_notes.",
+        "- IMPORTANT: Never state uncertain text as fact in the description field. If a watermark or brand name is faint or unclear, write 'faint printed text' or '[?Fujicolor]' rather than confidently naming a brand or institution you cannot clearly read.",
+        "- subjects: Include 'Verso photographs'. Add further subjects only if derivable from visible text or markings.",
+        "- people: Leave empty unless names are written or stamped on the back.",
+        "- places: Leave empty unless a location is written on the back.",
+        "- dates: Use any date written on the back; otherwise carry forward the estimated date from the front if available.",
+        "- objects: List any stamps, stickers, labels, adhesive residue, or printed identifiers visible.",
+        "- uncertainty_notes: Note if the verso is entirely blank, if handwriting is illegible, or if attribution to the recto is uncertain.",
+        "- reviewer_notes: Note any archival significance of text or markings — donor inscriptions, photographer stamps, collection identifiers.",
+        "- Return ONLY the JSON object — no markdown fences, no explanation.",
+    ]
+    if ctx.get("terms_to_avoid"):
+        lines.append(f"Avoid these terms: {ctx['terms_to_avoid']}")
+    if ctx.get("institutional_rules"):
+        lines.append(f"Institutional rules: {ctx['institutional_rules']}")
     return "\n".join(lines)
 
 
@@ -117,6 +166,66 @@ def _parse_json_response(raw: str) -> dict:
     except json.JSONDecodeError:
         log.warning("Could not parse VLM response as JSON; returning raw text in description.")
         return {"description": raw, "uncertainty_notes": "VLM response was not valid JSON."}
+
+
+# ── Minimal prompt builders ───────────────────────────────────────────────────
+
+def _build_minimal_generate_prompt(session_context: dict) -> str:
+    ctx = session_context
+    field_list = "\n".join(
+        f'  "{f["key"]}": "<value or empty string>"'
+        for f in METADATA_FIELDS
+    )
+    lines = [
+        "You are a library metadata specialist. Examine this photograph and return ONLY a valid JSON object with these keys:",
+        "{",
+        field_list,
+        "}",
+        "",
+    ]
+    if ctx.get("collection_name"):
+        lines.append(f"Collection: {ctx['collection_name']}")
+    if ctx.get("known_locations"):
+        lines.append(f"Known locations: {ctx['known_locations']}")
+    if ctx.get("known_date_range"):
+        lines.append(f"Known date range: {ctx['known_date_range']}")
+    if ctx.get("known_people_orgs"):
+        lines.append(f"Known people/organisations: {ctx['known_people_orgs']}")
+    lines.append("")
+    lines.append("Return ONLY the JSON object — no markdown fences, no explanation.")
+    return "\n".join(lines)
+
+
+def _build_minimal_verso_prompt(session_context: dict) -> str:
+    ctx = session_context
+    field_list = "\n".join(
+        f'  "{f["key"]}": "<value or empty string>"'
+        for f in METADATA_FIELDS
+    )
+    lines = [
+        "You are a library metadata specialist. This is the VERSO (back side) of a photograph. Return ONLY a valid JSON object with these keys:",
+        "{",
+        field_list,
+        "}",
+        "",
+    ]
+    if ctx.get("collection_name"):
+        lines.append(f"Collection: {ctx['collection_name']}")
+    if ctx.get("recto_title"):
+        lines.append(f"Front side title: \"{ctx['recto_title']}\"")
+    if ctx.get("recto_description"):
+        lines.append(f"Front side description: {ctx['recto_description']}")
+    lines.append("")
+    lines.append("Return ONLY the JSON object — no markdown fences, no explanation.")
+    return "\n".join(lines)
+
+
+def _pick_builder(session_context: dict):
+    from app.config import PROMPT_STYLE
+    is_verso = session_context.get("is_verso")
+    if PROMPT_STYLE == "minimal":
+        return _build_minimal_verso_prompt if is_verso else _build_minimal_generate_prompt
+    return _build_verso_prompt if is_verso else _build_generate_prompt
 
 
 # ── Mock backend (no model required) ─────────────────────────────────────────
@@ -210,44 +319,64 @@ def _qwen_infer(image_path: str, text_prompt: str) -> str:
     return result
 
 
-def _qwen_generate(image_path: str, session_context: dict) -> dict:
-    prompt = _build_generate_prompt(session_context)
-    raw = _qwen_infer(image_path, prompt)
+def _qwen_generate(image_paths: list, session_context: dict) -> dict:
+    builder = _pick_builder(session_context)
+    raw = _qwen_infer(image_paths[0], builder(session_context))
     return _parse_json_response(raw)
 
 
-def _qwen_revise(image_path: str, current_metadata: dict, feedback: str, session_context: dict) -> dict:
+def _qwen_revise(image_paths: list, current_metadata: dict, feedback: str, session_context: dict) -> dict:
     prompt = _build_revise_prompt(current_metadata, feedback, session_context)
-    raw = _qwen_infer(image_path, prompt)
+    raw = _qwen_infer(image_paths[0], prompt)
     return _parse_json_response(raw)
 
 
 # ── Ollama backend ────────────────────────────────────────────────────────────
 
-def _ollama_infer(image_path: str, text_prompt: str) -> str:
-    import base64
-    import urllib.request
+def _encode_image(image_path: str, max_px: int, quality: int) -> str:
+    import base64, io
+    from PIL import Image as PILImage, ImageOps
+    img = PILImage.open(image_path).convert("RGB")
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((max_px, max_px), PILImage.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality)
+    return base64.b64encode(buf.getvalue()).decode()
 
+
+MAX_PAGES = 8        # vllm caps itself at 2 in _vllm_infer
+
+
+def _multipage_prefix(n: int) -> str:
+    if n <= 1:
+        return ""
+    return (
+        f"This item has {n} pages and may be a folio, folder, or envelope containing multiple documents "
+        f"(photographs, letters, notes, or other materials). "
+        "Examine ALL pages carefully. Your description should describe the item as a whole — "
+        "what it contains, not just the first page. If it contains a photograph AND a letter, describe both. "
+        "Transcribe any visible text from letters or notes verbatim in visible_text. "
+        "Use people, dates, and subjects drawn from ALL pages, not just the first.\n\n"
+    )
+
+
+def _ollama_infer(image_paths: list, text_prompt: str) -> str:
+    import urllib.request
     import os
     from pathlib import Path
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=False)
     from app.config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY
     OLLAMA_TOKEN = os.getenv("OLLAMA_TOKEN", "")
-    from PIL import Image as PILImage, ImageOps
-    import io
 
-    img = PILImage.open(image_path).convert("RGB")
-    img = ImageOps.exif_transpose(img)
-    img.thumbnail((OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_MAX_PX), PILImage.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=OLLAMA_IMAGE_QUALITY)
-    b64 = base64.b64encode(buf.getvalue()).decode()
+    pages = image_paths[:MAX_PAGES]
+    images = [_encode_image(p, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY) for p in pages]
+    prompt = _multipage_prefix(len(image_paths)) + text_prompt
 
     payload = json.dumps({
         "model": OLLAMA_MODEL,
-        "prompt": text_prompt,
-        "images": [b64],
+        "prompt": prompt,
+        "images": images,
         "stream": False,
         "options": {"temperature": 0},
     }).encode()
@@ -266,98 +395,155 @@ def _ollama_infer(image_path: str, text_prompt: str) -> str:
     return data.get("response", "")
 
 
-def _ollama_generate(image_path: str, session_context: dict) -> dict:
-    prompt = _build_generate_prompt(session_context)
-    raw = _ollama_infer(image_path, prompt)
+def _ollama_generate(image_paths: list, session_context: dict) -> dict:
+    builder = _pick_builder(session_context)
+    raw = _ollama_infer(image_paths, builder(session_context))
     return _parse_json_response(raw)
 
 
-def _ollama_revise(image_path: str, current_metadata: dict, feedback: str, session_context: dict) -> dict:
+def _ollama_revise(image_paths: list, current_metadata: dict, feedback: str, session_context: dict) -> dict:
     prompt = _build_revise_prompt(current_metadata, feedback, session_context)
-    raw = _ollama_infer(image_path, prompt)
+    raw = _ollama_infer(image_paths, prompt)
+    return _parse_json_response(raw)
+
+
+# ── vLLM backend (OpenAI-compatible) ─────────────────────────────────────────
+
+def _vllm_infer(image_paths: list, text_prompt: str) -> str:
+    import urllib.request
+    import os
+    from dotenv import load_dotenv
+    from pathlib import Path
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=False)
+    from app.config import VLLM_BASE_URL, VLLM_MODEL, VLLM_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY
+    VLLM_TOKEN = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
+
+    pages = image_paths[:2]  # vllm server limit
+    image_blocks = [
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_encode_image(p, VLLM_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY)}"}}
+        for p in pages
+    ]
+    prompt = _multipage_prefix(len(image_paths)) + text_prompt
+
+    payload = json.dumps({
+        "model": VLLM_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": image_blocks + [{"type": "text", "text": prompt}],
+        }],
+        "max_tokens": 8192,
+        "temperature": 0,
+        # fast/direct mode — no <think> block (which would otherwise wrap the JSON)
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode()
+
+    headers = {"Content-Type": "application/json"}
+    if VLLM_TOKEN:
+        headers["Authorization"] = f"Bearer {VLLM_TOKEN}"
+
+    req = urllib.request.Request(
+        f"{VLLM_BASE_URL}/v1/chat/completions",
+        data=payload,
+        headers=headers,
+    )
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        data = json.loads(resp.read())
+    msg = data["choices"][0]["message"]
+    # reasoning models may put text in content (possibly with a <think> block) or
+    # in a separate reasoning field; take content, fall back, then strip any think
+    import re
+    content = msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or ""
+    return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
+
+def _vllm_generate(image_paths: list, session_context: dict) -> dict:
+    builder = _pick_builder(session_context)
+    raw = _vllm_infer(image_paths, builder(session_context))
+    return _parse_json_response(raw)
+
+
+def _vllm_revise(image_paths: list, current_metadata: dict, feedback: str, session_context: dict) -> dict:
+    prompt = _build_revise_prompt(current_metadata, feedback, session_context)
+    raw = _vllm_infer(image_paths, prompt)
     return _parse_json_response(raw)
 
 
 # ── Claude API backend ────────────────────────────────────────────────────────
 
-def _claude_infer(image_path: str, text_prompt: str) -> str:
-    import base64
-    import io
+def _claude_infer(image_paths: list, text_prompt: str) -> str:
     import anthropic
-    from PIL import Image as PILImage, ImageOps
     from app.config import ANTHROPIC_API_KEY, CLAUDE_MODEL, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY
 
-    img = PILImage.open(image_path).convert("RGB")
-    img = ImageOps.exif_transpose(img)
-    img.thumbnail((OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_MAX_PX), PILImage.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=OLLAMA_IMAGE_QUALITY)
-    b64 = base64.standard_b64encode(buf.getvalue()).decode()
+    image_blocks = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _encode_image(p, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY)}}
+        for p in image_paths
+    ]
+    prompt = _multipage_prefix(len(image_paths)) + text_prompt
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     message = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
         temperature=0,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                    {"type": "text", "text": text_prompt},
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": image_blocks + [{"type": "text", "text": prompt}]}],
     )
     return message.content[0].text
 
 
-def _claude_generate(image_path: str, session_context: dict) -> dict:
-    prompt = _build_generate_prompt(session_context)
-    raw = _claude_infer(image_path, prompt)
+def _claude_generate(image_paths: list, session_context: dict) -> dict:
+    builder = _pick_builder(session_context)
+    raw = _claude_infer(image_paths, builder(session_context))
     return _parse_json_response(raw)
 
 
-def _claude_revise(image_path: str, current_metadata: dict, feedback: str, session_context: dict) -> dict:
+def _claude_revise(image_paths: list, current_metadata: dict, feedback: str, session_context: dict) -> dict:
     prompt = _build_revise_prompt(current_metadata, feedback, session_context)
-    raw = _claude_infer(image_path, prompt)
+    raw = _claude_infer(image_paths, prompt)
     return _parse_json_response(raw)
 
 
 # ── Public interface ──────────────────────────────────────────────────────────
 
-def generate_metadata(image_path: str, session_context: dict) -> dict:
+def generate_metadata(image_paths: "str | list", session_context: dict) -> dict:
     """Generate draft metadata for an image using the configured local VLM."""
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
     backend = MODEL_BACKEND
-    log.info("generate_metadata: backend=%s path=%s", backend, image_path)
+    log.info("generate_metadata: backend=%s pages=%d", backend, len(image_paths))
     if backend == "qwen_vl":
-        return _qwen_generate(image_path, session_context)
+        return _qwen_generate(image_paths, session_context)
     elif backend == "ollama":
-        return _ollama_generate(image_path, session_context)
+        return _ollama_generate(image_paths, session_context)
+    elif backend == "vllm":
+        return _vllm_generate(image_paths, session_context)
     elif backend == "claude":
-        return _claude_generate(image_path, session_context)
+        return _claude_generate(image_paths, session_context)
     elif backend == "mock":
-        return _mock_generate(image_path, session_context)
+        return _mock_generate(image_paths[0], session_context)
     else:
-        raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}. Choose qwen_vl, ollama, claude, or mock.")
+        raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}. Choose qwen_vl, ollama, vllm, claude, or mock.")
 
 
 def revise_metadata(
-    image_path: str,
+    image_paths: "str | list",
     current_metadata: dict,
     feedback: str,
     session_context: dict,
 ) -> dict:
     """Revise existing metadata based on reviewer feedback using the local VLM."""
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
     backend = MODEL_BACKEND
     log.info("revise_metadata: backend=%s feedback=%r", backend, feedback[:80])
     if backend == "qwen_vl":
-        return _qwen_revise(image_path, current_metadata, feedback, session_context)
+        return _qwen_revise(image_paths, current_metadata, feedback, session_context)
     elif backend == "ollama":
-        return _ollama_revise(image_path, current_metadata, feedback, session_context)
+        return _ollama_revise(image_paths, current_metadata, feedback, session_context)
+    elif backend == "vllm":
+        return _vllm_revise(image_paths, current_metadata, feedback, session_context)
     elif backend == "claude":
-        return _claude_revise(image_path, current_metadata, feedback, session_context)
+        return _claude_revise(image_paths, current_metadata, feedback, session_context)
     elif backend == "mock":
-        return _mock_revise(image_path, current_metadata, feedback, session_context)
+        return _mock_revise(image_paths[0], current_metadata, feedback, session_context)
     else:
         raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}.")

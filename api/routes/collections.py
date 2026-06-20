@@ -7,6 +7,8 @@ GET  /api/collections/{id}
 PUT  /api/collections/{id}
 GET  /api/collections/{id}/stats
 """
+import subprocess
+import sys
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -79,3 +81,16 @@ def update_collection(collection_id: int, body: CollectionIn, db: Session = Depe
 @router.get("/collections/{collection_id}/stats")
 def collection_stats(collection_id: int, db: Session = Depends(get_db)):
     return crud.status_counts(db, collection_id=collection_id)
+
+
+@router.post("/collections/{collection_id}/generate")
+def generate_collection(collection_id: int, db: Session = Depends(get_db)):
+    colls = crud.list_collections(db)
+    coll = next((c for c in colls if c.id == collection_id), None)
+    if not coll:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    subprocess.Popen(
+        [sys.executable, "-m", "app.cli", "generate", "--collection", coll.name, "--overwrite"],
+        cwd="/digitization/Metadata-Generator-App",
+    )
+    return {"status": "started", "collection": coll.name}

@@ -7,7 +7,10 @@
 		const colId = app.selectedCollectionId;
 		const filter = app.statusFilter;
 		if (colId === null) return;
-		getItems(colId, filter).then(items => { app.items = items; });
+		getItems(colId, filter).then(items => {
+			app.items = items;
+			app.itemsKey = `${colId}:${filter}`;
+		});
 	});
 
 	function open(index: number) {

@@ -34,10 +34,9 @@ def revise(item_id: int, body: ReviseIn, db: Session = Depends(get_db)):
             detail="No metadata record — generate a draft first via the CLI",
         )
 
-    rep = item.pages[0]  # representative page for VLM
     try:
         revised = vlm_revise(
-            image_path=rep.filepath,
+            image_paths=[p.filepath for p in item.pages],
             current_metadata=rec.to_dict(),
             feedback=body.feedback,
             session_context=item.collection.session_context(),

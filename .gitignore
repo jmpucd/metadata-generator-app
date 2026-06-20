@@ -39,3 +39,7 @@ session_*.md
 # Editor/OS
 .DS_Store
 *.swp
+
+# local backups
+*.bak
+*.bak.*
