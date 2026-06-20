@@ -10,6 +10,8 @@ Public interface (two functions every backend must expose):
 Set MODEL_BACKEND in app/config.py (or via env var) to choose:
     "qwen_vl"  — Qwen2-VL via HuggingFace transformers
     "ollama"   — any Ollama-served multimodal model (LLaVA, moondream, etc.)
+    "vllm"     — OpenAI-compatible endpoint (e.g. Qwen 3.6 served by vLLM)
+    "claude"   — Anthropic Claude API
     "mock"     — deterministic stub for development / testing (no GPU needed)
 """
 from __future__ import annotations
@@ -305,6 +307,72 @@ def _claude_revise(image_path: str, current_metadata: dict, feedback: str, sessi
     return _parse_json_response(raw)
 
 
+# ── vLLM (OpenAI-compatible) backend — e.g. Qwen 3.6 ───────────────────────────
+# This is an OpenAI-style API, NOT Ollama: POST <base>/chat/completions with the
+# exact served model id; "fast vs thinking" is a per-request flag, not a model.
+
+def _vllm_infer(image_path: str, text_prompt: str) -> str:
+    import base64
+    import io
+    import re
+    import urllib.request
+
+    from PIL import Image as PILImage, ImageOps
+    from app.config import (
+        VLLM_BASE_URL, VLLM_MODEL, VLLM_API_KEY, VLLM_MAX_TOKENS,
+        VLLM_ENABLE_THINKING, OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY,
+    )
+
+    img = PILImage.open(image_path).convert("RGB")
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((OLLAMA_IMAGE_MAX_PX, OLLAMA_IMAGE_MAX_PX), PILImage.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=OLLAMA_IMAGE_QUALITY)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+
+    payload = json.dumps({
+        "model": VLLM_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text_prompt},
+                {"type": "image_url",
+                 "image_url": {"url": "data:image/jpeg;base64," + b64}},
+            ],
+        }],
+        "max_tokens": VLLM_MAX_TOKENS,
+        "temperature": 0,
+        "stream": False,
+        # one model; toggle reasoning per request
+        "chat_template_kwargs": {"enable_thinking": VLLM_ENABLE_THINKING},
+    }).encode()
+
+    headers = {"Content-Type": "application/json"}
+    if VLLM_API_KEY:
+        headers["Authorization"] = f"Bearer {VLLM_API_KEY}"
+
+    req = urllib.request.Request(
+        f"{VLLM_BASE_URL}/chat/completions", data=payload, headers=headers,
+    )
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        data = json.loads(resp.read())
+    # content can be null if a <think> block consumed the token budget
+    content = data["choices"][0]["message"].get("content") or ""
+    return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
+
+def _vllm_generate(image_path: str, session_context: dict) -> dict:
+    prompt = _build_generate_prompt(session_context)
+    raw = _vllm_infer(image_path, prompt)
+    return _parse_json_response(raw)
+
+
+def _vllm_revise(image_path: str, current_metadata: dict, feedback: str, session_context: dict) -> dict:
+    prompt = _build_revise_prompt(current_metadata, feedback, session_context)
+    raw = _vllm_infer(image_path, prompt)
+    return _parse_json_response(raw)
+
+
 # ── Public interface ──────────────────────────────────────────────────────────
 
 def generate_metadata(image_path: str, session_context: dict) -> dict:
@@ -315,12 +383,14 @@ def generate_metadata(image_path: str, session_context: dict) -> dict:
         return _qwen_generate(image_path, session_context)
     elif backend == "ollama":
         return _ollama_generate(image_path, session_context)
+    elif backend == "vllm":
+        return _vllm_generate(image_path, session_context)
     elif backend == "claude":
         return _claude_generate(image_path, session_context)
     elif backend == "mock":
         return _mock_generate(image_path, session_context)
     else:
-        raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}. Choose qwen_vl, ollama, claude, or mock.")
+        raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}. Choose qwen_vl, ollama, vllm, claude, or mock.")
 
 
 def revise_metadata(
@@ -336,6 +406,8 @@ def revise_metadata(
         return _qwen_revise(image_path, current_metadata, feedback, session_context)
     elif backend == "ollama":
         return _ollama_revise(image_path, current_metadata, feedback, session_context)
+    elif backend == "vllm":
+        return _vllm_revise(image_path, current_metadata, feedback, session_context)
     elif backend == "claude":
         return _claude_revise(image_path, current_metadata, feedback, session_context)
     elif backend == "mock":

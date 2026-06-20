@@ -22,7 +22,7 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # ── Local VLM settings ─────────────────────────────────────────────────────────
 # Change MODEL_BACKEND to "ollama" or "mock" to swap the backend without
 # touching any other code.
-MODEL_BACKEND: str = os.getenv("MODEL_BACKEND", "ollama")  # qwen_vl | ollama | mock
+MODEL_BACKEND: str = os.getenv("MODEL_BACKEND", "ollama")  # qwen_vl | ollama | vllm | claude | mock
 
 # Qwen-VL
 QWEN_MODEL_ID: str = os.getenv("QWEN_MODEL_ID", "Qwen/Qwen2-VL-7B-Instruct")
@@ -36,6 +36,17 @@ OLLAMA_TOKEN: str = os.getenv("OLLAMA_TOKEN", "")
 # Claude API backend
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
+
+# vLLM (OpenAI-compatible) backend — e.g. Qwen 3.6 served by vLLM.
+# NOTE: this is NOT Ollama. Base URL ends in /v1, model is the exact served id
+# (check GET <base>/models), no API key needed. Reachable on-campus/VPN only.
+VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://cyberdyne01.library.ucdavis.edu:30804/v1")
+VLLM_MODEL: str = os.getenv("VLLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+VLLM_API_KEY: str = os.getenv("VLLM_API_KEY", "")          # usually none required
+VLLM_MAX_TOKENS: int = int(os.getenv("VLLM_MAX_TOKENS", "1024"))
+# Reasoning mode: off = fast/direct. If you turn it on, RAISE VLLM_MAX_TOKENS — the
+# <think> block counts against the budget and can otherwise leave content empty.
+VLLM_ENABLE_THINKING: bool = os.getenv("VLLM_ENABLE_THINKING", "false").lower() in ("1", "true", "yes")
 
 # ── Metadata fields ────────────────────────────────────────────────────────────
 # These drive both the DB schema and the UI form.
