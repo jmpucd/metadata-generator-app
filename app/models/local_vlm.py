@@ -74,7 +74,7 @@ def _build_generate_prompt(session_context: dict) -> str:
         "- objects: list specific named objects visible in the image.",
         "- people: describe visible individuals by role, apparent age, clothing, or other observable characteristics — do not name unless a name is visible.",
         "- places: include specific location if identifiable from signage or context; otherwise describe the type of space.",
-        "- visible_text: Transcribe all visible text exactly as it appears. For foreign-language text, add an inline translation immediately after in brackets: 原文 [translation: English meaning]. If the translation is uncertain, use [translation?: probable meaning] and also note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
+        "- visible_text: Transcribe all visible text exactly as it appears. For each foreign-language segment, identify the language in parentheses and add a translation in brackets immediately after — format: 原文 (Language) [translation: meaning]. Translate the full phrase for meaning — do NOT translate word-by-word or split compound phrases. Chinese compounds must be read as units: e.g. 歡迎光臨 = 'Welcome' (not 'welcome + visit'), 合影留念 = 'commemorative group photo' (not 'group photo + souvenir'). Example: '歡迎光臨曼谷大皇宮合影留念 (Traditional Chinese) [translation: Welcome to Bangkok Grand Palace — commemorative group photo] WELCOME TO BANGKOK GRAND PALACE'. Every non-English segment must have a language label and translation. If uncertain, use [translation?: probable meaning] and note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
         "- If you are uncertain about any value, note it in uncertainty_notes.",
         "- reviewer_notes: add any archival observations about approximate date, context, or significance that a cataloguer would find useful.",
         "- Return ONLY the JSON object — no markdown fences, no explanation.",
@@ -112,7 +112,7 @@ def _build_verso_prompt(session_context: dict) -> str:
         "Guidelines:",
         "- title: Use EXACTLY this format: 'Verso: back side of item depicting [3-7 word summary from the front description]'. If no front description is available, summarise what can be inferred.",
         "- description: Describe the physical condition of the back. Note any discoloration, foxing, water damage, yellowing, stains, fading, or paper texture. If blank, state that clearly.",
-        "- visible_text: Transcribe text visible on the back verbatim. For clearly legible text, transcribe as-is. For partially legible text, use the format '[?best guess]' (e.g. '[?Fujicolor]'). Use '[illegible]' only when no reading is possible at all. Use empty string if there is no text. For any foreign-language text, add an inline translation immediately after in brackets: 原文 [translation: English meaning]. If the translation is uncertain, use [translation?: probable meaning] and also note it in uncertainty_notes.",
+        "- visible_text: Transcribe text visible on the back verbatim. For each foreign-language segment, identify the language in parentheses and add a translation in brackets immediately after — format: 原文 (Language) [translation: meaning]. Example: '写真館 (Japanese) [translation: Photography Studio] TOKYO'. Every non-English segment must have a language label and translation. If uncertain, use [translation?: probable meaning] and note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
         "- IMPORTANT: Never state uncertain text as fact in the description field. If a watermark or brand name is faint or unclear, write 'faint printed text' or '[?Fujicolor]' rather than confidently naming a brand or institution you cannot clearly read.",
         "- subjects: Include 'Verso photographs'. Add further subjects only if derivable from visible text or markings.",
         "- people: Leave empty unless names are written or stamped on the back.",
@@ -148,7 +148,7 @@ def _build_revise_prompt(current_metadata: dict, feedback: str, session_context:
     lines += [
         "",
         "Apply the reviewer's instruction and return ONLY the revised JSON object.",
-        "Preserve all fields; only change those affected by the instruction.",
+        "Preserve all fields. When applying a change, propagate it to ALL semantically related fields — for example, if location detail is added to description, also update places; if a person is identified in description, also update people; if a date is clarified, also update dates.",
         "Return ONLY the JSON object — no markdown fences, no explanation.",
     ]
     return "\n".join(lines)

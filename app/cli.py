@@ -125,6 +125,7 @@ def generate(
     collection: str = typer.Option(..., "--collection", "-c", help="Collection name."),
     limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max items to process."),
     overwrite: bool = typer.Option(False, "--overwrite", help="Re-generate even if draft exists."),
+    item: Optional[str] = typer.Option(None, "--item", "-i", help="item_key to process (single item)."),
 ):
     """Generate draft metadata for items using the local VLM."""
     from app.db.crud import (
@@ -139,14 +140,21 @@ def generate(
         rprint(f"[red]Collection not found:[/red] {collection!r}")
         raise typer.Exit(1)
 
-    items = list_items(db, collection_id=coll.id)
-    if not overwrite:
-        items = [
-            item for item in items
-            if not (get_metadata(db, item.id) and get_metadata(db, item.id).draft_generated)
-        ]
+    if item:
+        matched = get_item_by_key(db, coll.id, item)
+        if not matched:
+            rprint(f"[red]Item not found:[/red] {item!r}")
+            raise typer.Exit(1)
+        items = [matched]
+    else:
+        items = list_items(db, collection_id=coll.id)
+        if not overwrite:
+            items = [
+                i for i in items
+                if not (get_metadata(db, i.id) and get_metadata(db, i.id).draft_generated)
+            ]
 
-    if limit:
+    if not item and limit:
         items = items[:limit]
 
     if not items:
