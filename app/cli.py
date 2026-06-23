@@ -161,9 +161,33 @@ def generate(
         rprint("[yellow]No items need draft generation.[/yellow]")
         raise typer.Exit(0)
 
-    rprint(f"[bold]Generating metadata for {len(items)} item(s)…[/bold]")
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from app.config import GENERATE_WORKERS
+
+    items = [i for i in items if i.pages]
+    rprint(f"[bold]Generating metadata for {len(items)} item(s)…[/bold] "
+           f"(workers={GENERATE_WORKERS})")
     session_ctx = coll.session_context()
     errors = 0
+
+    def _build_ctx(it):
+        """Main-thread context build (incl. verso->recto DB lookup)."""
+        ctx = dict(session_ctx)
+        kl = it.item_key.lower()
+        if "_verso" in kl:
+            recto_key = it.item_key[:kl.index("_verso")] + "_recto" + it.item_key[kl.index("_verso") + len("_verso"):]
+            recto_item = get_item_by_key(db, coll.id, recto_key)
+            recto_meta = get_metadata(db, recto_item.id) if recto_item else None
+            ctx["is_verso"] = True
+            ctx["recto_title"] = (recto_meta.title or "") if recto_meta else ""
+            ctx["recto_description"] = (recto_meta.description or "") if recto_meta else ""
+        return ctx
+
+    # Two passes so verso items see their recto's saved metadata; each pass runs
+    # items in parallel (vision is I/O-bound). generate_metadata does NO DB work;
+    # all DB reads/writes happen on this main thread.
+    verso_items = [i for i in items if "_verso" in i.item_key.lower()]
+    first_items = [i for i in items if "_verso" not in i.item_key.lower()]
 
     with Progress(
         SpinnerColumn(),
@@ -173,36 +197,27 @@ def generate(
         console=console,
     ) as progress:
         task = progress.add_task("Processing…", total=len(items))
-        for item in items:
-            if not item.pages:
-                rprint(f"[yellow]  ⚠ {item.item_key}: no pages, skipping[/yellow]")
-                progress.advance(task)
+        for batch in (first_items, verso_items):
+            if not batch:
                 continue
-            all_pages = [p.filepath for p in item.pages]
-            progress.update(task, description=item.item_key)
-
-            # Build item-specific context; detect verso pages
-            item_ctx = dict(session_ctx)
-            if "_verso" in item.item_key.lower():
-                # Derive recto key by replacing _verso (any case) with _recto
-                key_lower = item.item_key.lower()
-                recto_key = item.item_key[: key_lower.index("_verso")] + "_recto" + item.item_key[key_lower.index("_verso") + len("_verso"):]
-                recto_item = get_item_by_key(db, coll.id, recto_key)
-                recto_meta = get_metadata(db, recto_item.id) if recto_item else None
-                item_ctx["is_verso"] = True
-                item_ctx["recto_title"] = (recto_meta.title or "") if recto_meta else ""
-                item_ctx["recto_description"] = (recto_meta.description or "") if recto_meta else ""
-
-            try:
-                fields = generate_metadata(all_pages, item_ctx)
-                upsert_metadata(db, item.id, fields)
-                mark_draft_generated(db, item.id)
-                snapshot_revision(db, item.id, "draft")
-            except Exception as e:
-                db.rollback()
-                rprint(f"[red]  ✗ {item.item_key}: {e}[/red]")
-                errors += 1
-            progress.advance(task)
+            with ThreadPoolExecutor(max_workers=GENERATE_WORKERS) as ex:
+                futs = {}
+                for it in batch:
+                    pages = [p.filepath for p in it.pages]
+                    futs[ex.submit(generate_metadata, pages, _build_ctx(it))] = it
+                for fut in as_completed(futs):
+                    it = futs[fut]
+                    progress.update(task, description=it.item_key)
+                    try:
+                        fields = fut.result()
+                        upsert_metadata(db, it.id, fields)
+                        mark_draft_generated(db, it.id)
+                        snapshot_revision(db, it.id, "draft")
+                    except Exception as e:
+                        db.rollback()
+                        rprint(f"[red]  ✗ {it.item_key}: {e}[/red]")
+                        errors += 1
+                    progress.advance(task)
 
     rprint(f"[green]✔ Done.[/green] {len(items) - errors} succeeded, {errors} failed.")
 

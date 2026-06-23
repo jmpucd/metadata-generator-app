@@ -46,6 +46,11 @@ PROMPT_STYLE: str = os.getenv("PROMPT_STYLE", "full")  # full | minimal
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
 
+# ── Concurrency ─────────────────────────────────────────────────────────────
+# Items processed in parallel by `generate` (vision calls are I/O-bound; the GPU
+# batches across requests). DB writes stay single-threaded.
+GENERATE_WORKERS: int = int(os.getenv("GENERATE_WORKERS", "6"))
+
 # ── Endpoint resilience ─────────────────────────────────────────────────────
 VLLM_CONNECT_TIMEOUT: float = float(os.getenv("VLLM_CONNECT_TIMEOUT", "15"))
 VLLM_READ_TIMEOUT: float = float(os.getenv("VLLM_READ_TIMEOUT", "600"))
