@@ -46,6 +46,24 @@ PROMPT_STYLE: str = os.getenv("PROMPT_STYLE", "full")  # full | minimal
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")
 
+# ── Endpoint resilience ─────────────────────────────────────────────────────
+VLLM_CONNECT_TIMEOUT: float = float(os.getenv("VLLM_CONNECT_TIMEOUT", "15"))
+VLLM_READ_TIMEOUT: float = float(os.getenv("VLLM_READ_TIMEOUT", "600"))
+VLLM_RETRIES: int = int(os.getenv("VLLM_RETRIES", "6"))  # exp backoff, survives brief blips
+
+# ── Nightly maintenance window (pause between items) ────────────────────────
+# "HH:MM" 24h local server time; both empty = disabled. Wraps midnight.
+MAINT_PAUSE_START: str = os.getenv("MAINT_PAUSE_START", "")  # e.g. "00:00"
+MAINT_PAUSE_END: str = os.getenv("MAINT_PAUSE_END", "")      # e.g. "02:00"
+
+# ── Document mode (OCR + searchable PDF for textual documents) ──────────────
+DOC_DETECT: bool = os.getenv("DOC_DETECT", "true").lower() in ("1", "true", "yes")
+DOC_OCR_MAX_PX: int = int(os.getenv("DOC_OCR_MAX_PX", "2200"))   # higher res for OCR
+PDF_DIR = Path(os.getenv("PDF_DIR", str(EXPORTS_DIR / "pdfs")))
+PDF_DIR.mkdir(parents=True, exist_ok=True)
+TESSERACT_BIN: str = os.getenv("TESSERACT_BIN", "tesseract")
+TESS_LANG: str = os.getenv("TESS_LANG", "eng")
+
 # ── Metadata fields ────────────────────────────────────────────────────────────
 # These drive both the DB schema and the UI form.
 METADATA_FIELDS: list[dict] = [
@@ -60,6 +78,8 @@ METADATA_FIELDS: list[dict] = [
     {"key": "uncertainty_notes", "label": "Uncertainty Notes",     "type": "textarea", "required": False},
     {"key": "reviewer_notes",    "label": "Reviewer Notes",        "type": "textarea", "required": False},
 ]
+# Note: doc_type / full_ocr_text / generated_pdf_path are DB columns set by the
+# pipeline (not prompt fields), so they're intentionally NOT in METADATA_FIELDS.
 
 REVIEW_STATUSES = ["queue", "working", "ready", "hold", "exported"]
 

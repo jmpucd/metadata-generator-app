@@ -409,18 +409,44 @@ def _ollama_revise(image_paths: list, current_metadata: dict, feedback: str, ses
 
 # ── vLLM backend (OpenAI-compatible) ─────────────────────────────────────────
 
-def _vllm_infer(image_paths: list, text_prompt: str) -> str:
+def _wait_out_maintenance() -> None:
+    """Block while inside the configured nightly maintenance window (wraps midnight)."""
+    import datetime
+    import time
+    from app.config import MAINT_PAUSE_START, MAINT_PAUSE_END
+    s, e = MAINT_PAUSE_START, MAINT_PAUSE_END
+    if not s or not e:
+        return
+    smin, emin = int(s[:2]) * 60 + int(s[3:5]), int(e[:2]) * 60 + int(e[3:5])
+    announced = False
+    while True:
+        now = datetime.datetime.now()
+        cur = now.hour * 60 + now.minute
+        in_win = (smin <= cur < emin) if smin < emin else (cur >= smin or cur < emin)
+        if not in_win:
+            return
+        if not announced:
+            log.info("maintenance window %s-%s active; pausing until %s", s, e, e)
+            announced = True
+        time.sleep(60)
+
+
+def _vllm_infer(image_paths: list, text_prompt: str, max_px: int = None) -> str:
     import urllib.request
     import os
+    import time
+    import re
     from dotenv import load_dotenv
     from pathlib import Path
     load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=False)
-    from app.config import VLLM_BASE_URL, VLLM_MODEL, VLLM_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY
+    from app.config import (VLLM_BASE_URL, VLLM_MODEL, VLLM_IMAGE_MAX_PX,
+                            OLLAMA_IMAGE_QUALITY, VLLM_READ_TIMEOUT, VLLM_RETRIES)
     VLLM_TOKEN = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
+    px = max_px or VLLM_IMAGE_MAX_PX
 
-    pages = image_paths[:2]  # vllm server limit
+    pages = image_paths[:2]  # vllm server limit per request
     image_blocks = [
-        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_encode_image(p, VLLM_IMAGE_MAX_PX, OLLAMA_IMAGE_QUALITY)}"}}
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_encode_image(p, px, OLLAMA_IMAGE_QUALITY)}"}}
         for p in pages
     ]
     prompt = _multipage_prefix(len(image_paths)) + text_prompt
@@ -441,19 +467,23 @@ def _vllm_infer(image_paths: list, text_prompt: str) -> str:
     if VLLM_TOKEN:
         headers["Authorization"] = f"Bearer {VLLM_TOKEN}"
 
-    req = urllib.request.Request(
-        f"{VLLM_BASE_URL}/v1/chat/completions",
-        data=payload,
-        headers=headers,
-    )
-    with urllib.request.urlopen(req, timeout=600) as resp:
-        data = json.loads(resp.read())
-    msg = data["choices"][0]["message"]
-    # reasoning models may put text in content (possibly with a <think> block) or
-    # in a separate reasoning field; take content, fall back, then strip any think
-    import re
-    content = msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or ""
-    return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    _wait_out_maintenance()
+    last = None
+    for attempt in range(VLLM_RETRIES):
+        try:
+            req = urllib.request.Request(
+                f"{VLLM_BASE_URL}/v1/chat/completions", data=payload, headers=headers)
+            with urllib.request.urlopen(req, timeout=VLLM_READ_TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            msg = data["choices"][0]["message"]
+            # reasoning models may put text in content (possibly with a <think>
+            # block) or a separate field; take content, fall back, strip think
+            content = msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or ""
+            return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        except Exception as e:  # noqa: BLE001 - transient endpoint blip -> retry
+            last = e
+            time.sleep(min(60, 2 ** attempt))  # 1,2,4,8,16,32s
+    raise RuntimeError(f"vllm call failed after {VLLM_RETRIES} tries: {last}")
 
 
 def _vllm_generate(image_paths: list, session_context: dict) -> dict:
@@ -504,12 +534,22 @@ def _claude_revise(image_paths: list, current_metadata: dict, feedback: str, ses
 
 # ── Public interface ──────────────────────────────────────────────────────────
 
-def generate_metadata(image_paths: "str | list", session_context: dict) -> dict:
-    """Generate draft metadata for an image using the configured local VLM."""
-    if isinstance(image_paths, str):
-        image_paths = [image_paths]
+def _infer(image_paths: list, prompt: str, max_px: int = None) -> str:
+    """Backend-agnostic vision call (used by classify + OCR)."""
     backend = MODEL_BACKEND
-    log.info("generate_metadata: backend=%s pages=%d", backend, len(image_paths))
+    if backend == "vllm":
+        return _vllm_infer(image_paths, prompt, max_px=max_px)
+    elif backend == "ollama":
+        return _ollama_infer(image_paths, prompt)
+    elif backend == "claude":
+        return _claude_infer(image_paths, prompt)
+    elif backend == "qwen_vl":
+        return _qwen_infer(image_paths[0], prompt)
+    return ""
+
+
+def _backend_generate(image_paths: list, session_context: dict) -> dict:
+    backend = MODEL_BACKEND
     if backend == "qwen_vl":
         return _qwen_generate(image_paths, session_context)
     elif backend == "ollama":
@@ -522,6 +562,35 @@ def generate_metadata(image_paths: "str | list", session_context: dict) -> dict:
         return _mock_generate(image_paths[0], session_context)
     else:
         raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}. Choose qwen_vl, ollama, vllm, claude, or mock.")
+
+
+def generate_metadata(image_paths: "str | list", session_context: dict) -> dict:
+    """Generate draft metadata. Auto-detects textual documents and routes them to a
+    full-OCR + searchable-PDF branch; photos get the usual description path."""
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
+    backend = MODEL_BACKEND
+    log.info("generate_metadata: backend=%s pages=%d", backend, len(image_paths))
+
+    from app.config import DOC_DETECT, DOC_OCR_MAX_PX
+    if DOC_DETECT and backend != "mock":
+        try:
+            from app.models import documents
+            dtype = documents.classify_doc_type(image_paths, _infer)
+            log.info("classified as %s", dtype)
+            if dtype == "document":
+                def _ocr_infer(ips, pr):
+                    return _infer(ips, pr, max_px=DOC_OCR_MAX_PX)
+                return documents.process_document(
+                    image_paths, session_context, _infer, _ocr_infer, _parse_json_response)
+        except Exception as e:  # noqa: BLE001 - never let doc routing break generation
+            log.warning("doc detection/branch failed (%s); using photo path", e)
+
+    md = _backend_generate(image_paths, session_context)
+    if isinstance(md, dict):
+        md["doc_type"] = "photo"          # authoritative (photo branch)
+        md.pop("full_ocr_text", None)     # document-only field
+    return md
 
 
 def revise_metadata(

@@ -142,6 +142,11 @@ class MetadataRecord(Base):
     approved_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     approved_by: Mapped[Optional[str]] = mapped_column(String(200))
 
+    # Document mode: auto-detected type, full OCR transcription, searchable PDF
+    doc_type: Mapped[Optional[str]] = mapped_column(String(50))            # "photo" | "document"
+    full_ocr_text: Mapped[Optional[str]] = mapped_column(Text)            # complete OCR for documents
+    generated_pdf_path: Mapped[Optional[str]] = mapped_column(String(1000))  # searchable PDF
+
     item: Mapped[Optional["Item"]] = relationship("Item", back_populates="metadata_record")
 
     def get_tags(self, field: str) -> list[str]:
@@ -175,6 +180,9 @@ class MetadataRecord(Base):
             "last_revised_at": self.last_revised_at.isoformat() if self.last_revised_at else None,
             "approved_at": self.approved_at.isoformat() if self.approved_at else None,
             "approved_by": self.approved_by,
+            "doc_type": self.doc_type,
+            "full_ocr_text": self.full_ocr_text,
+            "generated_pdf_path": self.generated_pdf_path,
         }
 
 
