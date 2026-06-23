@@ -2,7 +2,7 @@
 	import { app } from '$lib/state.svelte';
 	import {
 		getItems, getMetadata, putMetadata, setStatus, revise,
-		imageFileUrl, getStats, getConfig,
+		imageFileUrl, getStats, getConfig, pdfUrl,
 	} from '$lib/api';
 	import type { MetadataRecord } from '$lib/types';
 
@@ -219,6 +219,8 @@
 	const isMultiPage = $derived((app.currentItem?.pages.length ?? 0) > 1);
 	const approveLabel = $derived(app.currentMetadata?.review_status === 'ready' ? 'Reopen' : 'Approve');
 	const flagLabel    = $derived(app.currentMetadata?.review_status === 'hold'  ? 'Unhold' : 'Hold');
+	const docType      = $derived(app.currentMetadata?.doc_type ?? '');
+	const hasPdf       = $derived(!!app.currentMetadata?.generated_pdf_path);
 </script>
 
 <svelte:window onkeydown={handleKey} />
@@ -250,6 +252,12 @@
 					<span class="badge badge-{app.currentMetadata.review_status}">
 						{STATUS_LABEL[app.currentMetadata.review_status] ?? app.currentMetadata.review_status}
 					</span>
+				{/if}
+				{#if docType}
+					<span class="badge-doctype" class:is-document={docType === 'document'}>{docType}</span>
+				{/if}
+				{#if hasPdf && app.currentItem}
+					<a class="pdf-link" href={pdfUrl(app.currentItem.id)} target="_blank" rel="noopener">Searchable PDF ↗</a>
 				{/if}
 			</div>
 
@@ -978,4 +986,29 @@
 	}
 
 	.scroll-pad { height: 4rem; }
+
+	/* doc-type badge + searchable-PDF link in the provenance strip */
+	.badge-doctype {
+		font-family: var(--font-mono);
+		font-size: 0.48rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--c-muted);
+		border: 1px solid var(--c-border);
+		padding: 0.12rem 0.4rem;
+		white-space: nowrap;
+	}
+	.badge-doctype.is-document {
+		color: var(--c-accent);
+		border-color: var(--c-accent);
+	}
+	.pdf-link {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		letter-spacing: 0.06em;
+		color: var(--c-accent);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.pdf-link:hover { text-decoration: underline; }
 </style>

@@ -44,6 +44,7 @@ export const getItems = (collectionId: number, status?: string) => {
 
 export const imageFileUrl = (id: number) => `${BASE}/images/${id}/file`;
 export const thumbnailUrl = (id: number) => `${BASE}/images/${id}/thumbnail`;
+export const pdfUrl = (itemId: number) => `${BASE}/metadata/${itemId}/pdf`;
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
 

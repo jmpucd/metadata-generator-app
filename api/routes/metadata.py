@@ -5,9 +5,11 @@ GET /api/metadata/{item_id}
 PUT /api/metadata/{item_id}
 GET /api/metadata/{item_id}/history
 """
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -47,6 +49,18 @@ def update_metadata(item_id: int, body: MetadataIn, db: Session = Depends(get_db
     crud.snapshot_revision(db, item_id, "human_edit", revised_by="reviewer")
     rec = crud.upsert_metadata(db, item_id, fields)
     return rec.to_dict()
+
+
+@router.get("/metadata/{item_id}/pdf")
+def get_pdf(item_id: int, db: Session = Depends(get_db)):
+    """Serve the generated searchable PDF for a document item."""
+    rec = crud.get_metadata(db, item_id)
+    if not rec or not rec.generated_pdf_path:
+        raise HTTPException(status_code=404, detail="No generated PDF for this item")
+    p = Path(rec.generated_pdf_path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="PDF not found on disk")
+    return FileResponse(str(p), media_type="application/pdf", filename=p.name)
 
 
 @router.get("/metadata/{item_id}/history")

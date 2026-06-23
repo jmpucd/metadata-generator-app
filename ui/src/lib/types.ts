@@ -46,6 +46,9 @@ export interface MetadataRecord {
 	draft_generated: boolean;
 	last_revised_at: string | null;
 	approved_at: string | null;
+	doc_type: string | null;
+	full_ocr_text: string | null;
+	generated_pdf_path: string | null;
 }
 
 export interface RevisionEntry {
