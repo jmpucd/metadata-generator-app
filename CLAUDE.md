@@ -1,0 +1,38 @@
+# metadata-generator-app
+
+Generates archival **metadata** + full OCR text + aligned **searchable PDFs** for digitized
+collections, using the in-house vision model. Repo: `github.com/jmpucd/metadata-generator-app`
+(private). Active branch: **`main`**. A second git remote `server` points at the live
+checkout `jmpike@digitization:/digitization/Metadata-Generator-App` — reconcile there too.
+
+> This is the **FastAPI + SvelteKit** app, not the stale public Streamlit version.
+
+## Stack
+- `api/` — FastAPI, `uvicorn … --reload` on :8000
+- `ui/` — SvelteKit, vite dev on :5173 (access the server UI via SSH tunnel)
+- Dagster + SQLAlchemy/SQLite; Typer CLI in `app/cli.py` (`generate` command,
+  parallelized across items via `GENERATE_WORKERS`)
+
+## Behavior
+Auto-detects **document vs photo** per item:
+- **Document** → per-page OCR (one page per request) + an aligned searchable PDF (Qwen OCR
+  text quality + Tesseract word boxes for text-layer geometry; per-word morph scaling).
+- **Photo** → photo-metadata path.
+
+DB record carries `doc_type`, `full_ocr_text`, `generated_pdf_path`. UI shows a doc-type
+badge + "Searchable PDF ↗" link. Resilient HTTP retries + nightly maintenance-window pause
+are built in.
+
+## Endpoint
+`http://cyberdyne01.library.ucdavis.edu:30804` (config may add `/v1`), model
+`Qwen/Qwen3.6-35B-A3B` (no API key, on-campus/VPN only). Run the CLI with explicit
+`MODEL_BACKEND=vllm` if `.env` isn't picked up.
+
+## Secrets
+Server `.env` holds `OLLAMA_TOKEN=sk-…` — git-ignored, **never commit it**.
+
+## Status / notes
+- Chicago Cafe collection (`D-822_Chicago_Cafe_Records`) fully processed (804/804); TIFFs
+  converted to JPEG first.
+- Next task: build a **Fedora digital collection** from the Chicago Cafe output.
+- The reusable OCR/PDF tools here are being extracted into the `digtk` toolkit.
