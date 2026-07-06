@@ -33,10 +33,11 @@ OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "https://samwise.library.ucd
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5vl:32b")
 OLLAMA_TOKEN: str = os.getenv("OLLAMA_TOKEN", "")
 
-# vLLM backend (OpenAI-compatible). Base URL has NO /v1 (the client appends
-# /v1/chat/completions). Model must be the exact served id (curl <base>/v1/models).
-VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://cyberdyne01.library.ucdavis.edu:30804")
-VLLM_MODEL: str = os.getenv("VLLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+# vLLM backend (OpenAI-compatible), via digtk.vllm_client. Base URL should end in
+# /api (Open WebUI/samwise) or /v1 (bare vLLM); a bare host gets /v1 appended for
+# back-compat with old cyberdyne-style .env values. samwise requires VLLM_TOKEN.
+VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "https://samwise.library.ucdavis.edu/api")
+VLLM_MODEL: str = os.getenv("VLLM_MODEL", "qwen3.6-fast:35b")
 VLLM_TOKEN: str = os.getenv("VLLM_TOKEN", "")
 VLLM_IMAGE_MAX_PX: int = int(os.getenv("VLLM_IMAGE_MAX_PX", "1024"))
 

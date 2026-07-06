@@ -41,3 +41,6 @@ dagster-webserver>=1.7.0
 # Utilities
 python-dotenv>=1.0.0
 rich>=13.0.0          # Pretty CLI output (used by Typer)
+
+# Shared digitization toolkit (OCR/PDF/raster + vLLM client)
+digtk @ git+ssh://git@github.com/jmpucd/digtk.git

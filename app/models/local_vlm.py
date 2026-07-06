@@ -409,81 +409,35 @@ def _ollama_revise(image_paths: list, current_metadata: dict, feedback: str, ses
 
 # ── vLLM backend (OpenAI-compatible) ─────────────────────────────────────────
 
-def _wait_out_maintenance() -> None:
-    """Block while inside the configured nightly maintenance window (wraps midnight)."""
-    import datetime
-    import time
-    from app.config import MAINT_PAUSE_START, MAINT_PAUSE_END
-    s, e = MAINT_PAUSE_START, MAINT_PAUSE_END
-    if not s or not e:
-        return
-    smin, emin = int(s[:2]) * 60 + int(s[3:5]), int(e[:2]) * 60 + int(e[3:5])
-    announced = False
-    while True:
-        now = datetime.datetime.now()
-        cur = now.hour * 60 + now.minute
-        in_win = (smin <= cur < emin) if smin < emin else (cur >= smin or cur < emin)
-        if not in_win:
-            return
-        if not announced:
-            log.info("maintenance window %s-%s active; pausing until %s", s, e, e)
-            announced = True
-        time.sleep(60)
-
-
 def _vllm_infer(image_paths: list, text_prompt: str, max_px: int = None) -> str:
-    import urllib.request
+    """Transport lives in digtk.vllm_client (retries, maintenance-window pause,
+    <think> stripping); this wrapper bridges MGA config and sizes the images."""
     import os
-    import time
-    import re
     from dotenv import load_dotenv
     from pathlib import Path
     load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=False)
     from app.config import (VLLM_BASE_URL, VLLM_MODEL, VLLM_IMAGE_MAX_PX,
-                            OLLAMA_IMAGE_QUALITY, VLLM_READ_TIMEOUT, VLLM_RETRIES)
-    VLLM_TOKEN = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
+                            OLLAMA_IMAGE_QUALITY, VLLM_READ_TIMEOUT, VLLM_RETRIES,
+                            MAINT_PAUSE_START, MAINT_PAUSE_END)
+    from digtk import config as dtk_config, raster, vllm_client
+
+    base = VLLM_BASE_URL.rstrip("/")
+    if not (base.endswith("/api") or base.endswith("/v1")):
+        base += "/v1"  # bare host configured (old cyberdyne style)
+    dtk_config.VLLM_BASE_URL = base
+    dtk_config.VLLM_MODEL = VLLM_MODEL
+    dtk_config.VLLM_API_KEY = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
+    dtk_config.VLLM_READ_TIMEOUT = VLLM_READ_TIMEOUT
+    dtk_config.VLLM_RETRIES = VLLM_RETRIES
+    dtk_config.MAINT_PAUSE_START = MAINT_PAUSE_START
+    dtk_config.MAINT_PAUSE_END = MAINT_PAUSE_END
+
     px = max_px or VLLM_IMAGE_MAX_PX
-
     pages = image_paths[:2]  # vllm server limit per request
-    image_blocks = [
-        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_encode_image(p, px, OLLAMA_IMAGE_QUALITY)}"}}
-        for p in pages
-    ]
+    image_bytes = [raster.to_jpeg(p, max_px=px, quality=OLLAMA_IMAGE_QUALITY)
+                   for p in pages]
     prompt = _multipage_prefix(len(image_paths)) + text_prompt
-
-    payload = json.dumps({
-        "model": VLLM_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": image_blocks + [{"type": "text", "text": prompt}],
-        }],
-        "max_tokens": 8192,
-        "temperature": 0,
-        # fast/direct mode — no <think> block (which would otherwise wrap the JSON)
-        "chat_template_kwargs": {"enable_thinking": False},
-    }).encode()
-
-    headers = {"Content-Type": "application/json"}
-    if VLLM_TOKEN:
-        headers["Authorization"] = f"Bearer {VLLM_TOKEN}"
-
-    _wait_out_maintenance()
-    last = None
-    for attempt in range(VLLM_RETRIES):
-        try:
-            req = urllib.request.Request(
-                f"{VLLM_BASE_URL}/v1/chat/completions", data=payload, headers=headers)
-            with urllib.request.urlopen(req, timeout=VLLM_READ_TIMEOUT) as resp:
-                data = json.loads(resp.read())
-            msg = data["choices"][0]["message"]
-            # reasoning models may put text in content (possibly with a <think>
-            # block) or a separate field; take content, fall back, strip think
-            content = msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or ""
-            return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-        except Exception as e:  # noqa: BLE001 - transient endpoint blip -> retry
-            last = e
-            time.sleep(min(60, 2 ** attempt))  # 1,2,4,8,16,32s
-    raise RuntimeError(f"vllm call failed after {VLLM_RETRIES} tries: {last}")
+    return vllm_client.chat(image_bytes, prompt, max_tokens=8192, temperature=0.0)
 
 
 def _vllm_generate(image_paths: list, session_context: dict) -> dict:

@@ -24,9 +24,11 @@ badge + "Searchable PDF ↗" link. Resilient HTTP retries + nightly maintenance-
 are built in.
 
 ## Endpoint
-`http://cyberdyne01.library.ucdavis.edu:30804` (config may add `/v1`), model
-`Qwen/Qwen3.6-35B-A3B` (no API key, on-campus/VPN only). Run the CLI with explicit
-`MODEL_BACKEND=vllm` if `.env` isn't picked up.
+Default: `https://samwise.library.ucdavis.edu/api` (Open WebUI, OpenAI-compatible),
+model `qwen3.6-fast:35b`, key via `VLLM_TOKEN` (or `OLLAMA_TOKEN`). Transport lives in
+**digtk.vllm_client** (retries, maintenance pause); `_vllm_infer` just bridges config.
+Old cyberdyne-style bare-host `VLLM_BASE_URL` values still work (`/v1` is appended).
+Run the CLI with explicit `MODEL_BACKEND=vllm` if `.env` isn't picked up.
 
 ## Secrets
 Server `.env` holds `OLLAMA_TOKEN=sk-…` — git-ignored, **never commit it**.
@@ -35,4 +37,6 @@ Server `.env` holds `OLLAMA_TOKEN=sk-…` — git-ignored, **never commit it**.
 - Chicago Cafe collection (`D-822_Chicago_Cafe_Records`) fully processed (804/804); TIFFs
   converted to JPEG first.
 - Next task: build a **Fedora digital collection** from the Chicago Cafe output.
-- The reusable OCR/PDF tools here are being extracted into the `digtk` toolkit.
+- OCR/PDF/raster + vLLM transport now come from the **digtk** toolkit (editable install
+  from `~/code/digtk`; `app/models/words.py`/`pdfbuild.py` were deleted). On the server
+  checkout, install digtk too (see digtk/docs/CONSOLIDATION-PLAN.md).

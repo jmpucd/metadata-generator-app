@@ -85,12 +85,15 @@ def _item_name(image_paths: List[str]) -> str:
 
 
 def build_pdf(image_paths: List[str], title: str) -> str:
-    from app.models.words import tesseract_words
-    from app.models.pdfbuild import build_searchable_pdf
-    from app.config import PDF_DIR
+    from digtk.words import tesseract_words
+    from digtk.pdfbuild import build_searchable_pdf
+    from app.config import PDF_DIR, TESSERACT_BIN, TESS_LANG
+    from digtk import config as dtk_config
+    dtk_config.TESSERACT_BIN, dtk_config.TESS_LANG = TESSERACT_BIN, TESS_LANG
     words = [tesseract_words(p) for p in image_paths]
     out = os.path.join(str(PDF_DIR), _item_name(image_paths) + ".pdf")
-    return build_searchable_pdf(image_paths, words, out, meta={"title": title})
+    return build_searchable_pdf(image_paths, words, out, meta={"title": title},
+                                producer="metadata-generator")
 
 
 def process_document(image_paths: List[str], ctx: dict, infer: Callable,
