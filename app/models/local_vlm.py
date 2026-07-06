@@ -426,7 +426,9 @@ def _vllm_infer(image_paths: list, text_prompt: str, max_px: int = None) -> str:
         base += "/v1"  # bare host configured (old cyberdyne style)
     dtk_config.VLLM_BASE_URL = base
     dtk_config.VLLM_MODEL = VLLM_MODEL
-    dtk_config.VLLM_API_KEY = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
+    _token = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
+    if _token:  # else keep digtk's ~/.config/digtk/api_key fallback
+        dtk_config.VLLM_API_KEY = _token
     dtk_config.VLLM_READ_TIMEOUT = VLLM_READ_TIMEOUT
     dtk_config.VLLM_RETRIES = VLLM_RETRIES
     dtk_config.MAINT_PAUSE_START = MAINT_PAUSE_START
