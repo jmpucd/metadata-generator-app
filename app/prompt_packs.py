@@ -34,6 +34,7 @@ logs a warning and is skipped.
 from __future__ import annotations
 
 import logging
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
@@ -148,12 +149,40 @@ def pack_lines(value, kind: str = "photo") -> list[str]:
     return lines
 
 
+@lru_cache(maxsize=1)
+def installed_tess_langs() -> set[str]:
+    """Language packs Tesseract actually has, or an empty set if we can't tell."""
+    from app.config import TESSERACT_BIN
+
+    try:
+        proc = subprocess.run([TESSERACT_BIN, "--list-langs"],
+                              capture_output=True, text=True, timeout=30)
+    except Exception as e:  # noqa: BLE001 — binary missing is the PDF builder's problem
+        log.warning("could not list Tesseract languages (%s)", e)
+        return set()
+    # First line is a header ("List of available languages…"); the rest are codes.
+    lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+    return {ln for ln in lines[1:] if " " not in ln}
+
+
 def tess_lang_for(value, default: str = "eng") -> str:
-    """Merge the default Tesseract languages with any contributed by packs."""
+    """Merge the default Tesseract languages with any contributed by packs.
+
+    Languages Tesseract doesn't have installed are dropped with a warning — a pack
+    naming a missing langpack would otherwise fail the whole searchable-PDF build.
+    """
     langs: list[str] = []
     for source in [default] + [p["tess_lang"] for p in resolve(value, "document")]:
         for lang in str(source or "").split("+"):
             lang = lang.strip()
             if lang and lang not in langs:
                 langs.append(lang)
+
+    available = installed_tess_langs()
+    if available:
+        missing = [l for l in langs if l not in available]
+        if missing:
+            log.warning("Tesseract langpack(s) not installed: %s — continuing without "
+                        "(install them for a better PDF text layer)", "+".join(missing))
+            langs = [l for l in langs if l in available]
     return "+".join(langs) or "eng"
