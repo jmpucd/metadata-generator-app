@@ -19,6 +19,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from app import prompt_packs
 from app.config import MODEL_BACKEND, METADATA_FIELDS
 
 log = logging.getLogger(__name__)
@@ -61,24 +62,25 @@ def _build_generate_prompt(session_context: dict) -> str:
         "}",
         "",
         "Description guidelines:",
-        "- Be specific about what is ACTUALLY VISIBLE — describe specific foods, clothing styles, furniture, architectural details, signage, and objects by name.",
+        "- Be specific about what is ACTUALLY VISIBLE — name the particular buildings, garments, vehicles, tools, plants, furnishings, signage, and objects you can see rather than describing them in general terms.",
         "- Note apparent ethnicity, age range, and gender of people only when clearly visible and relevant to the archival record.",
         "- Estimate the approximate decade (e.g. '1970s', 'early 2000s') from visible clues like clothing, hairstyles, technology, and photographic style.",
-        "- Describe the physical setting in detail: room type, décor, lighting, visible architectural features.",
+        "- Describe the setting in detail — whether it is interior or exterior, what kind of space or landscape it is, and its distinguishing features.",
         "- Write in complete sentences in the past tense for description.",
         "- title: a concise descriptive title (5-10 words), not a generic label.",
         "",
         "Rules:",
         "- For list-type fields (subjects, people, places, objects), return a JSON array of strings.",
-        "- subjects: use specific archival subject terms (e.g. 'Banquets', 'Wedding receptions', 'Street vendors'), not generic words like 'gathering'.",
+        "- subjects: use specific archival subject terms (e.g. 'Portrait photographs', 'Street scenes', 'Agricultural machinery'), not generic words like 'gathering'.",
         "- objects: list specific named objects visible in the image.",
         "- people: describe visible individuals by role, apparent age, clothing, or other observable characteristics — do not name unless a name is visible.",
         "- places: include specific location if identifiable from signage or context; otherwise describe the type of space.",
-        "- visible_text: Transcribe all visible text exactly as it appears. For each foreign-language segment, identify the language in parentheses and add a translation in brackets immediately after — format: 原文 (Language) [translation: meaning]. Translate the full phrase for meaning — do NOT translate word-by-word or split compound phrases. Chinese compounds must be read as units: e.g. 歡迎光臨 = 'Welcome' (not 'welcome + visit'), 合影留念 = 'commemorative group photo' (not 'group photo + souvenir'). Example: '歡迎光臨曼谷大皇宮合影留念 (Traditional Chinese) [translation: Welcome to Bangkok Grand Palace — commemorative group photo] WELCOME TO BANGKOK GRAND PALACE'. Every non-English segment must have a language label and translation. If uncertain, use [translation?: probable meaning] and note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
+        "- visible_text: Transcribe all visible text exactly as it appears. For each foreign-language segment, identify the language in parentheses and add a translation in brackets immediately after — format: 原文 (Language) [translation: meaning]. Translate the full phrase for meaning — do NOT translate word-by-word or split compound phrases into their parts. Every non-English segment must have a language label and translation. If uncertain, use [translation?: probable meaning] and note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
         "- If you are uncertain about any value, note it in uncertainty_notes.",
         "- reviewer_notes: add any archival observations about approximate date, context, or significance that a cataloguer would find useful.",
         "- Return ONLY the JSON object — no markdown fences, no explanation.",
     ]
+    lines += prompt_packs.pack_lines(ctx.get("prompt_packs"), "photo")
     return "\n".join(lines)
 
 
@@ -112,7 +114,7 @@ def _build_verso_prompt(session_context: dict) -> str:
         "Guidelines:",
         "- title: Use EXACTLY this format: 'Verso: back side of item depicting [3-7 word summary from the front description]'. If no front description is available, summarise what can be inferred.",
         "- description: Describe the physical condition of the back. Note any discoloration, foxing, water damage, yellowing, stains, fading, or paper texture. If blank, state that clearly.",
-        "- visible_text: Transcribe text visible on the back verbatim. For each foreign-language segment, identify the language in parentheses and add a translation in brackets immediately after — format: 原文 (Language) [translation: meaning]. Example: '写真館 (Japanese) [translation: Photography Studio] TOKYO'. Every non-English segment must have a language label and translation. If uncertain, use [translation?: probable meaning] and note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
+        "- visible_text: Transcribe text visible on the back verbatim. For each foreign-language segment, identify the language in parentheses and add a translation in brackets immediately after — format: 原文 (Language) [translation: meaning]. Translate the full phrase for meaning — do NOT translate word-by-word or split compound phrases into their parts. Every non-English segment must have a language label and translation. If uncertain, use [translation?: probable meaning] and note it in uncertainty_notes. For partially legible text use [?best guess]. Use [illegible] only when nothing can be read. Use empty string if there is no text.",
         "- IMPORTANT: Never state uncertain text as fact in the description field. If a watermark or brand name is faint or unclear, write 'faint printed text' or '[?Fujicolor]' rather than confidently naming a brand or institution you cannot clearly read.",
         "- subjects: Include 'Verso photographs'. Add further subjects only if derivable from visible text or markings.",
         "- people: Leave empty unless names are written or stamped on the back.",
@@ -127,6 +129,7 @@ def _build_verso_prompt(session_context: dict) -> str:
         lines.append(f"Avoid these terms: {ctx['terms_to_avoid']}")
     if ctx.get("institutional_rules"):
         lines.append(f"Institutional rules: {ctx['institutional_rules']}")
+    lines += prompt_packs.pack_lines(ctx.get("prompt_packs"), "verso")
     return "\n".join(lines)
 
 
@@ -417,7 +420,8 @@ def _vllm_infer(image_paths: list, text_prompt: str, max_px: int = None) -> str:
     from pathlib import Path
     load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=False)
     from app.config import (VLLM_BASE_URL, VLLM_MODEL, VLLM_IMAGE_MAX_PX,
-                            OLLAMA_IMAGE_QUALITY, VLLM_READ_TIMEOUT, VLLM_RETRIES,
+                            OLLAMA_IMAGE_QUALITY, VLLM_CONNECT_TIMEOUT,
+                            VLLM_READ_TIMEOUT, VLLM_RETRIES,
                             MAINT_PAUSE_START, MAINT_PAUSE_END)
     from digtk import config as dtk_config, raster, vllm_client
 
@@ -429,6 +433,7 @@ def _vllm_infer(image_paths: list, text_prompt: str, max_px: int = None) -> str:
     _token = os.getenv("VLLM_TOKEN", "") or os.getenv("OLLAMA_TOKEN", "")
     if _token:  # else keep digtk's ~/.config/digtk/api_key fallback
         dtk_config.VLLM_API_KEY = _token
+    dtk_config.VLLM_CONNECT_TIMEOUT = VLLM_CONNECT_TIMEOUT
     dtk_config.VLLM_READ_TIMEOUT = VLLM_READ_TIMEOUT
     dtk_config.VLLM_RETRIES = VLLM_RETRIES
     dtk_config.MAINT_PAUSE_START = MAINT_PAUSE_START

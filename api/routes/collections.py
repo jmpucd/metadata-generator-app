@@ -31,6 +31,7 @@ class CollectionIn(BaseModel):
     terms_to_avoid: Optional[str] = None
     institutional_rules: Optional[str] = None
     rights_sensitivity_notes: Optional[str] = None
+    prompt_packs: Optional[str] = None
 
 
 def _serialize(c) -> dict:
@@ -45,8 +46,20 @@ def _serialize(c) -> dict:
         "terms_to_avoid": c.terms_to_avoid,
         "institutional_rules": c.institutional_rules,
         "rights_sensitivity_notes": c.rights_sensitivity_notes,
+        "prompt_packs": c.prompt_packs,
         "created_at": c.created_at.isoformat(),
     }
+
+
+@router.get("/packs")
+def list_prompt_packs():
+    """Available prompt packs, for the Setup page picker."""
+    from app import prompt_packs
+
+    return [
+        {"name": p["name"], "description": p["description"], "applies_to": p["applies_to"]}
+        for p in prompt_packs.list_packs()
+    ]
 
 
 @router.get("/collections")

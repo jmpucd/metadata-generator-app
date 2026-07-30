@@ -23,6 +23,16 @@ DB record carries `doc_type`, `full_ocr_text`, `generated_pdf_path`. UI shows a 
 badge + "Searchable PDF ↗" link. Resilient HTTP retries + nightly maintenance-window pause
 are built in.
 
+## Prompt packs
+Reusable prompt modules in `prompts/packs/*.md`, loaded by `app/prompt_packs.py`.
+Collections opt in via `Collection.prompt_packs` (comma-separated names; Setup-page
+checkboxes). The base prompt holds what's true for every collection (JSON contract,
+uncertainty conventions, general foreign-language rule); packs carry material-specific
+examples — `language-cjk`, `interiors-foodways`, `correspondence`. A pack's `applies_to`
+limits it to the photo / verso / document paths, and `tess_lang` merges into the Tesseract
+languages for the searchable-PDF word boxes. Unknown pack names log a warning and are
+skipped. Inspect with `python -m app.cli packs [-c COLLECTION]`.
+
 ## Endpoint
 Default: `https://samwise.library.ucdavis.edu/api` (Open WebUI, OpenAI-compatible),
 model `qwen3.6-fast:35b`, key via `VLLM_TOKEN` (or `OLLAMA_TOKEN`). Transport lives in

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { app } from '$lib/state.svelte';
-	import { createCollection, updateCollection, getCollections, generateCollection } from '$lib/api';
-	import type { Collection } from '$lib/types';
+	import { createCollection, updateCollection, getCollections, generateCollection, getPromptPacks } from '$lib/api';
+	import type { Collection, PromptPack } from '$lib/types';
 
 	type Mode = 'view' | 'edit' | 'new';
 	let mode = $state<Mode>('view');
@@ -20,6 +20,16 @@
 	let terms_to_avoid        = $state('');
 	let institutional_rules   = $state('');
 	let rights_sensitivity    = $state('');
+	let selectedPacks         = $state<string[]>([]);
+
+	let availablePacks = $state<PromptPack[]>([]);
+	getPromptPacks().then(p => availablePacks = p).catch(() => availablePacks = []);
+
+	function togglePack(name: string) {
+		selectedPacks = selectedPacks.includes(name)
+			? selectedPacks.filter(p => p !== name)
+			: [...selectedPacks, name];
+	}
 
 	function loadCollection(col: Collection) {
 		name                  = col.name ?? '';
@@ -31,6 +41,7 @@
 		terms_to_avoid        = col.terms_to_avoid ?? '';
 		institutional_rules   = col.institutional_rules ?? '';
 		rights_sensitivity    = col.rights_sensitivity_notes ?? '';
+		selectedPacks         = (col.prompt_packs ?? '').split(',').map(p => p.trim()).filter(Boolean);
 	}
 
 	function startEdit() {
@@ -43,6 +54,7 @@
 		name = description_style = controlled_vocabulary = known_locations =
 		known_date_range = known_people_orgs = terms_to_avoid =
 		institutional_rules = rights_sensitivity = '';
+		selectedPacks = [];
 		mode = 'new';
 		error = '';
 	}
@@ -81,6 +93,7 @@
 				terms_to_avoid:           terms_to_avoid || null,
 				institutional_rules:      institutional_rules || null,
 				rights_sensitivity_notes: rights_sensitivity || null,
+				prompt_packs:             selectedPacks.join(', ') || null,
 			};
 			if (mode === 'new') {
 				const created = await createCollection(body);
@@ -127,6 +140,7 @@
 					['Terms to avoid', col.terms_to_avoid],
 					['Institutional rules', col.institutional_rules],
 					['Rights & sensitivity', col.rights_sensitivity_notes],
+					['Prompt packs', col.prompt_packs],
 				] as [label, val]}
 					{#if val}
 						<span class="anno-label">{label}</span>
@@ -177,6 +191,25 @@
 
 			<span class="anno-label">Rights & sensitivity notes</span>
 			<textarea class="field-textarea" bind:value={rights_sensitivity} use:autosize placeholder="—"></textarea>
+
+			<span class="anno-label">Prompt packs</span>
+			{#if availablePacks.length}
+				<div class="pack-list">
+					{#each availablePacks as pack}
+						<label class="pack">
+							<input type="checkbox" checked={selectedPacks.includes(pack.name)}
+								onchange={() => togglePack(pack.name)} />
+							<span class="pack-body">
+								<span class="pack-name">{pack.name}</span>
+								<span class="pack-applies">{pack.applies_to.join(' · ')}</span>
+								{#if pack.description}<span class="pack-desc">{pack.description}</span>{/if}
+							</span>
+						</label>
+					{/each}
+				</div>
+			{:else}
+				<p class="pack-empty">No packs found in prompts/packs/.</p>
+			{/if}
 
 			{#if error}
 				<p class="form-error">{error}</p>
@@ -262,6 +295,52 @@
 		display: flex;
 		gap: 0.5rem;
 		margin-top: 2rem;
+	}
+
+	.pack-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		margin-bottom: 1rem;
+	}
+
+	.pack {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		cursor: pointer;
+	}
+
+	.pack input { margin-top: 0.2rem; }
+
+	.pack-body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.pack-name {
+		font-size: 0.8rem;
+		color: var(--c-text);
+	}
+
+	.pack-applies {
+		font-size: 0.55rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--c-ghost);
+	}
+
+	.pack-desc {
+		font-size: 0.75rem;
+		color: var(--c-text-body);
+		line-height: 1.5;
+	}
+
+	.pack-empty {
+		font-size: 0.75rem;
+		color: var(--c-ghost);
+		margin-bottom: 1rem;
 	}
 
 	.form-error {

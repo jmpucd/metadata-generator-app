@@ -47,12 +47,15 @@ def ocr_pages(image_paths: List[str], ocr_infer: Callable) -> List[str]:
 
 
 def _doc_metadata_prompt(full_text: str, ctx: dict) -> str:
+    from app import prompt_packs
+
     head = []
     if ctx.get("collection_name"):
         head.append(f"Collection: {ctx['collection_name']}")
     if ctx.get("institutional_rules"):
         head.append(f"Institutional rules: {ctx['institutional_rules']}")
     excerpt = full_text[:8000]
+    packs = "\n".join(prompt_packs.pack_lines(ctx.get("prompt_packs"), "document"))
     return (
         "You are a library metadata specialist describing a textual document for a "
         "digital archive. Below is the document's OCR transcription.\n\n"
@@ -64,6 +67,7 @@ def _doc_metadata_prompt(full_text: str, ctx: dict) -> str:
         "Base it on the transcription (and the page image). Title = a concise descriptive "
         "title for the document. Description = what the document is and its content. "
         "Do not invent facts. Return ONLY the JSON object — no markdown fences."
+        + (f"\n{packs}" if packs else "")
     )
 
 
@@ -84,12 +88,13 @@ def _item_name(image_paths: List[str]) -> str:
     return os.path.splitext(os.path.basename(first))[0]
 
 
-def build_pdf(image_paths: List[str], title: str) -> str:
+def build_pdf(image_paths: List[str], title: str, tess_lang: str = "") -> str:
     from digtk.words import tesseract_words
     from digtk.pdfbuild import build_searchable_pdf
     from app.config import PDF_DIR, TESSERACT_BIN, TESS_LANG
     from digtk import config as dtk_config
-    dtk_config.TESSERACT_BIN, dtk_config.TESS_LANG = TESSERACT_BIN, TESS_LANG
+    dtk_config.TESSERACT_BIN = TESSERACT_BIN
+    dtk_config.TESS_LANG = tess_lang or TESS_LANG
     words = [tesseract_words(p) for p in image_paths]
     out = os.path.join(str(PDF_DIR), _item_name(image_paths) + ".pdf")
     return build_searchable_pdf(image_paths, words, out, meta={"title": title},
@@ -105,7 +110,12 @@ def process_document(image_paths: List[str], ctx: dict, infer: Callable,
 
     pdf_path = None
     try:
-        pdf_path = build_pdf(image_paths, md.get("title") or _item_name(image_paths))
+        from app import prompt_packs
+        from app.config import TESS_LANG
+        # Language packs contribute Tesseract languages too, so the PDF word-box pass
+        # can see the same scripts the prompt was told to expect.
+        lang = prompt_packs.tess_lang_for(ctx.get("prompt_packs"), TESS_LANG)
+        pdf_path = build_pdf(image_paths, md.get("title") or _item_name(image_paths), lang)
     except Exception as e:  # noqa: BLE001
         log.warning("searchable PDF build failed: %s", e)
 

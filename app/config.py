@@ -43,6 +43,10 @@ VLLM_IMAGE_MAX_PX: int = int(os.getenv("VLLM_IMAGE_MAX_PX", "1024"))
 
 PROMPT_STYLE: str = os.getenv("PROMPT_STYLE", "full")  # full | minimal
 
+# Reusable prompt modules ("packs") — see app/prompt_packs.py. Collections opt in by
+# listing pack names in Collection.prompt_packs.
+PACKS_DIR = Path(os.getenv("PACKS_DIR", str(BASE_DIR / "prompts" / "packs")))
+
 # Claude API backend
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-opus-4-7")

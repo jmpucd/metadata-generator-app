@@ -301,6 +301,57 @@ def db_check():
         rprint(f"[green]✔ Applied {len(actions)} migration(s).[/green]")
 
 
+# ── packs ─────────────────────────────────────────────────────────────────────
+
+@app.command()
+def packs(
+    collection: Optional[str] = typer.Option(None, "--collection", "-c",
+                                             help="Also show which packs this collection uses."),
+):
+    """List available prompt packs, and validate a collection's assignments."""
+    from app import prompt_packs
+
+    available = prompt_packs.list_packs()
+    if not available:
+        rprint("[yellow]No prompt packs found.[/yellow]")
+        raise typer.Exit(0)
+
+    rprint("[bold]Available prompt packs[/bold]")
+    for pack in available:
+        applies = ", ".join(pack["applies_to"])
+        rprint(f"  [cyan]{pack['name']}[/cyan]  [dim]({applies})[/dim]")
+        if pack["description"]:
+            rprint(f"    {pack['description']}")
+        if pack["tess_lang"]:
+            rprint(f"    [dim]tesseract: {pack['tess_lang']}[/dim]")
+
+    if not collection:
+        return
+
+    # DB import stays local so `packs` alone works without a database.
+    from app.db.crud import get_collection_by_name
+
+    db = _get_db()
+    try:
+        coll = get_collection_by_name(db, collection)
+        if not coll:
+            rprint(f"[red]Collection not found: {collection}[/red]")
+            raise typer.Exit(1)
+        names = prompt_packs.parse_names(coll.prompt_packs)
+        rprint(f"\n[bold]{coll.name}[/bold]")
+        if not names:
+            rprint("  [dim]no packs assigned — base prompt only[/dim]")
+            return
+        known = {p["name"] for p in available}
+        for name in names:
+            if name in known:
+                rprint(f"  [green]✔[/green] {name}")
+            else:
+                rprint(f"  [red]✘ {name} — no such pack (it will be skipped)[/red]")
+    finally:
+        db.close()
+
+
 # ── status ────────────────────────────────────────────────────────────────────
 
 @app.command()

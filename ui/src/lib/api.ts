@@ -1,4 +1,4 @@
-import type { Collection, ItemEntry, MetadataRecord, RevisionEntry, StatusCounts } from './types';
+import type { Collection, ItemEntry, MetadataRecord, PromptPack, RevisionEntry, StatusCounts } from './types';
 
 const BASE = '/api';
 
@@ -32,6 +32,9 @@ export const updateCollection = (id: number, body: Partial<Collection>) =>
 
 export const getStats = (collectionId: number) =>
 	req<StatusCounts>(`/collections/${collectionId}/stats`);
+
+export const getPromptPacks = () =>
+	req<PromptPack[]>('/packs');
 
 // ── Items ─────────────────────────────────────────────────────────────────────
 

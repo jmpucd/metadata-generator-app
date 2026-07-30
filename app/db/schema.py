@@ -49,6 +49,7 @@ class Collection(Base):
     terms_to_avoid: Mapped[Optional[str]] = mapped_column(Text)
     institutional_rules: Mapped[Optional[str]] = mapped_column(Text)
     rights_sensitivity_notes: Mapped[Optional[str]] = mapped_column(Text)
+    prompt_packs: Mapped[Optional[str]] = mapped_column(Text)  # comma-separated pack names
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
@@ -66,6 +67,7 @@ class Collection(Base):
             "terms_to_avoid": self.terms_to_avoid or "",
             "institutional_rules": self.institutional_rules or "",
             "rights_sensitivity_notes": self.rights_sensitivity_notes or "",
+            "prompt_packs": self.prompt_packs or "",
         }
 
 

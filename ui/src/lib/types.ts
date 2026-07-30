@@ -9,7 +9,14 @@ export interface Collection {
 	terms_to_avoid: string | null;
 	institutional_rules: string | null;
 	rights_sensitivity_notes: string | null;
+	prompt_packs: string | null;
 	created_at: string;
+}
+
+export interface PromptPack {
+	name: string;
+	description: string;
+	applies_to: string[];
 }
 
 export interface Page {
