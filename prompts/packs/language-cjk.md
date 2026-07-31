@@ -2,7 +2,7 @@
 name: language-cjk
 description: Chinese / Japanese / Korean text — whole-phrase translation, compound handling, worked examples
 applies_to: photo, verso, document
-tess_lang: eng+chi_tra+chi_sim
+tess_lang: eng+chi_tra+chi_sim+chi_tra_vert+chi_sim_vert
 ---
 
 - CJK compounds must be read as units, never glossed character-by-character: 歡迎光臨 = 'Welcome' (not 'welcome + visit'), 合影留念 = 'commemorative group photo' (not 'group photo + souvenir'), 記念写真 = 'commemorative photograph' (not 'memory + photo').
